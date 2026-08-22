@@ -393,6 +393,62 @@
       });
   }
 
+  // ---------- Supabase: getPendingEntries ----------
+  // Reads all rows with status='pending' and groups the flat rows back
+  // into the {txnId, category, staff, supervisor, dateDisplay, items:[...]}
+  // batch shape the rest of the app (renderPendingList etc.) already
+  // expects — mirrors what the old Apps Script backend used to hand back.
+  function getPendingEntriesFromSupabase(){
+    return sb.from('bad_stock_fresh_market')
+      .select('*')
+      .eq('status', 'pending')
+      .order('entry_date', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+
+        var batches = {};
+        var order = [];
+
+        res.data.forEach(function(row){
+          if(!batches[row.batch_id]){
+            batches[row.batch_id] = {
+              txnId: row.batch_id,
+              category: row.category,
+              staff: row.staff,
+              supervisor: row.supervisor,
+              dateDisplay: formatDateDisplay(row.entry_date),
+              items: []
+            };
+            order.push(row.batch_id);
+          }
+          batches[row.batch_id].items.push({
+            id: row.id,             // needed later to update/delete this exact row
+            plu: row.plu_code,
+            description: row.description,
+            material: row.material,
+            uom: row.uom,
+            qty: row.quantity
+          });
+        });
+
+        return order.map(function(key){ return batches[key]; });
+      });
+  }
+
+  // Matches your original sheet's "d.M.yyyy h.mm AM/PM" display format
+  function formatDateDisplay(isoString){
+    var d = new Date(isoString);
+    var day = d.getDate();
+    var month = d.getMonth() + 1;
+    var year = d.getFullYear();
+    var hours = d.getHours();
+    var minutes = d.getMinutes();
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12; if(hours === 0) hours = 12;
+    var minStr = minutes < 10 ? '0' + minutes : String(minutes);
+    return day + '.' + month + '.' + year + ' ' + hours + '.' + minStr + ' ' + ampm;
+  }
+
   var masterlist = [];         // full masterlist loaded once at startup
   var masterlistByPlu = {};    // fast lookup map: plu -> {description, material, uom}
   var currentLookup = null;    // currently matched PLU item awaiting quantity (New Entry)
@@ -824,7 +880,7 @@
     document.getElementById('pendingEmpty').style.display = 'none';
     document.getElementById('pendingCategoryEmpty').style.display = 'none';
 
-    apiGet('getPendingEntries')
+    getPendingEntriesFromSupabase()
       .then(function(entries){
         pendingEntries = entries;
         document.getElementById('pendingCount').textContent = entries.length;
