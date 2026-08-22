@@ -1166,6 +1166,7 @@
         '<button class="btn ghost" id="sendPrintBtn_' + pendingSafeKey + '" onclick="sendToPrintStation(\'' + key + '\')">Send to Print Station</button>' +
         '</div>' +
         '<div id="sendPrintStatus_' + pendingSafeKey + '"></div>' +
+        sapCopySectionHtml(key, draft) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
         '<input type="text" class="pending-material-doc" data-key="' + key + '" value="' + escapeHtml(draft.materialDocument) + '" placeholder="Enter material document number">' +
@@ -1218,6 +1219,85 @@
     document.querySelectorAll('.pending-qty-input').forEach(function(input){
       input.addEventListener('input', function(){ pendingDraft[input.dataset.key].qtyInput = input.value; });
     });
+  }
+
+  // ---------- Copy to SAP (chunked clipboard export) ----------
+  // Lets IT staff copy a pending batch's line items — Material, Qty, UOM,
+  // Plant, SLoc, Reason, in that exact column order — as tab-separated
+  // text, ready to paste directly into an SAP GUI grid. Batches can run
+  // well past 10 items, so this chunks the copy into groups of 10 with
+  // Prev/Next navigation rather than one giant paste.
+  var SAP_CHUNK_SIZE = 10;
+
+  function sapTotalChunks(draft){
+    return Math.max(1, Math.ceil(draft.items.length / SAP_CHUNK_SIZE));
+  }
+
+  function sapCopySectionHtml(key, draft){
+    if(draft.sapChunkIndex === undefined) draft.sapChunkIndex = 0;
+    var totalChunks = sapTotalChunks(draft);
+    if(draft.sapChunkIndex >= totalChunks) draft.sapChunkIndex = totalChunks - 1;
+    if(draft.sapChunkIndex < 0) draft.sapChunkIndex = 0;
+
+    var start = draft.sapChunkIndex * SAP_CHUNK_SIZE;
+    var chunkItems = draft.items.slice(start, start + SAP_CHUNK_SIZE);
+    var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
+
+    var rowsHtml = chunkItems.map(function(it){
+      return '<tr>' +
+        '<td>' + escapeHtml(it.material || '') + '</td>' +
+        '<td>' + escapeHtml(String(it.qty)) + '</td>' +
+        '<td>' + escapeHtml(it.uom || '') + '</td>' +
+        '<td>1008</td><td>1000</td><td>2</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<hr class="divider">' +
+      '<h2><span class="step-badge">&#128203;</span> Copy to SAP</h2>' +
+      '<div class="pending-meta" style="margin-bottom:8px;">Batch ' + (draft.sapChunkIndex + 1) + ' of ' + totalChunks +
+        ' &middot; ' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') + '</div>' +
+      '<table><thead><tr><th>Material</th><th>Qty</th><th>UOM</th><th>Plant</th><th>SLoc</th><th>Reason</th></tr></thead>' +
+      '<tbody>' + rowsHtml + '</tbody></table>' +
+      '<div class="btn-row">' +
+        '<button class="btn ghost" ' + (draft.sapChunkIndex <= 0 ? 'disabled' : '') + ' onclick="sapChunkPrev(\'' + key + '\')">Prev</button>' +
+        '<button class="btn secondary" onclick="copySapChunk(\'' + key + '\')">Copy Batch</button>' +
+        '<button class="btn ghost" ' + (draft.sapChunkIndex >= totalChunks - 1 ? 'disabled' : '') + ' onclick="sapChunkNext(\'' + key + '\')">Next</button>' +
+      '</div>' +
+      '<div id="sapCopyStatus_' + safeKey + '"></div>';
+  }
+
+  function sapChunkPrev(key){
+    var draft = pendingDraft[key];
+    draft.sapChunkIndex = Math.max(0, (draft.sapChunkIndex || 0) - 1);
+    renderPendingListFiltered();
+  }
+
+  function sapChunkNext(key){
+    var draft = pendingDraft[key];
+    var totalChunks = sapTotalChunks(draft);
+    draft.sapChunkIndex = Math.min(totalChunks - 1, (draft.sapChunkIndex || 0) + 1);
+    renderPendingListFiltered();
+  }
+
+  function copySapChunk(key){
+    var draft = pendingDraft[key];
+    var start = (draft.sapChunkIndex || 0) * SAP_CHUNK_SIZE;
+    var chunkItems = draft.items.slice(start, start + SAP_CHUNK_SIZE);
+    var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
+    var statusEl = document.getElementById('sapCopyStatus_' + safeKey);
+
+    var tsv = chunkItems.map(function(it){
+      return [it.material || '', it.qty, it.uom || '', '1008', '1000', '2'].join('\t');
+    }).join('\n');
+
+    navigator.clipboard.writeText(tsv)
+      .then(function(){
+        statusEl.innerHTML = '<div class="status ok">Copied ' + chunkItems.length + ' row(s) to clipboard.</div>';
+        setTimeout(function(){ if(statusEl) statusEl.innerHTML = ''; }, 2000);
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Copy failed: ' + err.message + '</div>';
+      });
   }
 
   function removePendingItem(el){
