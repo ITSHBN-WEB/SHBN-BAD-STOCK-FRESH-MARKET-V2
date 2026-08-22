@@ -278,6 +278,7 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   // ---------- Force all free-text inputs to uppercase as the person types ----------
   // Delegated on document so it also covers inputs created later (IT Entry's
@@ -308,6 +309,15 @@
   // URL, update EXEC_URL below to match.
   var EXEC_URL = 'https://script.google.com/macros/s/AKfycbwg2_9PLumzPLimQEV7-Ym-UvEXPhlyvqGLzzl8T24WLUnDWHw-j3OPrBkOphJGm52l/exec';
 
+  // ================= SUPABASE CLIENT =================
+  // Migration in progress: functions are being swapped from the Apps Script
+  // bridge above (apiGet/apiPost) to Supabase one at a time. Using "sb" as
+  // the variable name to avoid colliding with the library's own
+  // window.supabase namespace.
+  var SUPABASE_URL = 'https://naqswcyosmonfidsmyik.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_mqD4FqSihVWku1hOC6mClg_TG3CQcIT';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
   function apiGet(action) {
     return fetch(EXEC_URL + '?action=' + encodeURIComponent(action))
       .then(function (res) { return res.json(); })
@@ -333,6 +343,21 @@
       });
   }
 
+  // ---------- Supabase: getMasterlist ----------
+  // Reads the masterlist table (plu_code, material, description, uom) and
+  // maps it into the same shape lookupPlu()/renderPendingAddPreview()
+  // already expect ({plu, description, material, uom}), so nothing else
+  // in the app needs to change for this swap.
+  function getMasterlistFromSupabase(){
+    return sb.from('masterlist').select('*')
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return res.data.map(function(row){
+          return { plu: row.plu_code, description: row.description, material: row.material, uom: row.uom };
+        });
+      });
+  }
+
   var masterlist = [];         // full masterlist loaded once at startup
   var masterlistByPlu = {};    // fast lookup map: plu -> {description, material, uom}
   var currentLookup = null;    // currently matched PLU item awaiting quantity (New Entry)
@@ -345,7 +370,7 @@
 
   // ---------- Startup: load masterlist once, cache client-side ----------
   window.addEventListener('DOMContentLoaded', function(){
-    apiGet('getMasterlist')
+    getMasterlistFromSupabase()
       .then(function(list){
         masterlist = list;
         masterlistByPlu = {};
@@ -1368,7 +1393,7 @@
         document.getElementById('adminUom').value = '';
 
         // refresh local masterlist cache so New Entry / IT Entry lookups see it immediately
-        apiGet('getMasterlist').then(function(list){
+        getMasterlistFromSupabase().then(function(list){
           masterlist = list;
           masterlistByPlu = {};
           list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
