@@ -449,6 +449,108 @@
     return day + '.' + month + '.' + year + ' ' + hours + '.' + minStr + ' ' + ampm;
   }
 
+  // ---------- Supabase: saveITEntryDraft ----------
+  // Reconciles a batch's current item list against Supabase: updates rows
+  // that already have an id, inserts newly-added items (isNew, carrying
+  // batchInfo's category/staff/supervisor + fixed plant/sloc/reason so
+  // they match the rest of the batch), and deletes rows that were removed
+  // from the draft (present in Supabase but no longer in items).
+  function saveITEntryDraftToSupabase(txnId, items, batchInfo){
+    var existingIds = items.filter(function(it){ return it.id; }).map(function(it){ return it.id; });
+
+    var updates = items.filter(function(it){ return it.id; }).map(function(it){
+      return sb.from('bad_stock_fresh_market')
+        .update({ description: it.description, material: it.material, uom: it.uom, quantity: it.qty })
+        .eq('id', it.id);
+    });
+
+    var newRows = items.filter(function(it){ return it.isNew; }).map(function(it){
+      return {
+        batch_id: txnId,
+        entry_date: new Date().toISOString(),
+        category: batchInfo.category,
+        staff: batchInfo.staff,
+        supervisor: batchInfo.supervisor,
+        plu_code: it.plu,
+        description: it.description,
+        material: it.material,
+        quantity: it.qty,
+        uom: it.uom,
+        plant: '1008',
+        sloc: '1000',
+        reason: '2',
+        status: 'pending'
+      };
+    });
+
+    return sb.from('bad_stock_fresh_market').select('id').eq('batch_id', txnId)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        var toDelete = res.data.map(function(r){ return r.id; }).filter(function(id){ return existingIds.indexOf(id) === -1; });
+
+        var ops = updates.slice();
+        if(newRows.length) ops.push(sb.from('bad_stock_fresh_market').insert(newRows));
+        if(toDelete.length) ops.push(sb.from('bad_stock_fresh_market').delete().in('id', toDelete));
+
+        return Promise.all(ops);
+      })
+      .then(function(results){
+        results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+        return true;
+      });
+  }
+
+  // ---------- Supabase: submitITEntry ----------
+  // Saves any pending item edits first (same reconciliation as Save
+  // Changes), then marks every row in the batch as keyed_in with the
+  // Material Document / Key In By / Key In Date, and returns the data
+  // needed to render the print slip.
+  function submitITEntryToSupabase(txnId, items, batchInfo, materialDocument, keyInBy){
+    return saveITEntryDraftToSupabase(txnId, items, batchInfo)
+      .then(function(){
+        return sb.from('bad_stock_fresh_market')
+          .update({
+            material_document: materialDocument,
+            key_in_by: keyInBy,
+            key_in_date: new Date().toISOString(),
+            status: 'keyed_in'
+          })
+          .eq('batch_id', txnId);
+      })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return sb.from('bad_stock_fresh_market').select('*').eq('batch_id', txnId);
+      })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        var rows = res.data;
+        var first = rows[0] || {};
+        return {
+          printData: {
+            date: formatDateDisplay(first.entry_date),
+            time: '',
+            category: first.category,
+            staff: first.staff,
+            supervisor: first.supervisor,
+            materialDocument: materialDocument,
+            keyInBy: keyInBy,
+            items: rows.map(function(r){
+              return { plu: r.plu_code, description: r.description, material: r.material, uom: r.uom, qty: r.quantity };
+            })
+          }
+        };
+      });
+  }
+
+  // ---------- Supabase: deletePendingBatch ----------
+  function deletePendingBatchFromSupabase(txnId){
+    return sb.from('bad_stock_fresh_market').delete().eq('batch_id', txnId)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return true;
+      });
+  }
+
   var masterlist = [];         // full masterlist loaded once at startup
   var masterlistByPlu = {};    // fast lookup map: plu -> {description, material, uom}
   var currentLookup = null;    // currently matched PLU item awaiting quantity (New Entry)
@@ -1181,16 +1283,8 @@
                 adminPendingEntries.find(function(b){ return pendingKey(b) === key; });
     if(!draft.items.length) return Promise.reject(new Error('A batch must have at least one item.'));
 
-    var itemsPayload = draft.items.map(function(it){
-      return {
-        plu: it.plu, description: it.description, material: it.material,
-        uom: it.uom, qty: it.qty, isNew: !!it.isNew
-      };
-    });
-
-    return apiPost('saveITEntryDraft', {
-      txnId: batch.txnId,
-      items: itemsPayload
+    return saveITEntryDraftToSupabase(batch.txnId, draft.items, {
+      category: batch.category, staff: batch.staff, supervisor: batch.supervisor
     }).then(function(){
       draft.items.forEach(function(it){ it.isNew = false; });
     });
@@ -1235,19 +1329,9 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
 
-    var itemsPayload = draft.items.map(function(it){
-      return {
-        plu: it.plu, description: it.description, material: it.material,
-        uom: it.uom, qty: it.qty, isNew: !!it.isNew
-      };
-    });
-
-    apiPost('submitITEntry', {
-      txnId: batch.txnId,
-      items: itemsPayload,
-      materialDocument: draft.materialDocument.trim(),
-      keyInBy: draft.keyInBy.trim()
-    })
+    submitITEntryToSupabase(batch.txnId, draft.items, {
+      category: batch.category, staff: batch.staff, supervisor: batch.supervisor
+    }, draft.materialDocument.trim(), draft.keyInBy.trim())
       .then(function(res){
         draft.submitted = res.printData;
         statusEl.innerHTML = '';
@@ -1496,7 +1580,7 @@
     document.getElementById('adminPendingList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('adminPendingEmpty').style.display = 'none';
 
-    apiGet('getPendingEntries')
+    getPendingEntriesFromSupabase()
       .then(function(entries){
         adminPendingEntries = entries;
         renderAdminPendingList();
@@ -1556,7 +1640,7 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
 
-    apiPost('deletePendingBatch', { txnId: batch.txnId })
+    deletePendingBatchFromSupabase(batch.txnId)
       .then(function(){
         adminPendingEntries = adminPendingEntries.filter(function(b){ return b.txnId !== key; });
         renderAdminPendingList();
