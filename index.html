@@ -464,7 +464,17 @@
         .eq('id', it.id);
     });
 
-    var newRows = items.filter(function(it){ return it.isNew; }).map(function(it){
+    // Keep a reference to the actual new item objects (not just plain
+    // insert payloads) so that once Supabase assigns them real row ids,
+    // we can write those ids back onto the same objects living in
+    // pendingDraft[key].items. Without this, a newly-added item would
+    // stay "idless" forever after its first save — on the next save/
+    // submit it would look like neither an existing row (no id) nor a
+    // new one (isNew already cleared), and its real Supabase row would
+    // get swept into the delete step below since nothing on the client
+    // still pointed at it.
+    var newItems = items.filter(function(it){ return it.isNew; });
+    var newRows = newItems.map(function(it){
       return {
         batch_id: txnId,
         entry_date: new Date().toISOString(),
@@ -489,7 +499,19 @@
         var toDelete = res.data.map(function(r){ return r.id; }).filter(function(id){ return existingIds.indexOf(id) === -1; });
 
         var ops = updates.slice();
-        if(newRows.length) ops.push(sb.from('bad_stock_fresh_market').insert(newRows));
+        if(newRows.length){
+          ops.push(
+            sb.from('bad_stock_fresh_market').insert(newRows).select('id')
+              .then(function(insertRes){
+                if(insertRes.error) throw new Error(insertRes.error.message);
+                insertRes.data.forEach(function(row, idx){
+                  newItems[idx].id = row.id;
+                  newItems[idx].isNew = false;
+                });
+                return insertRes;
+              })
+          );
+        }
         if(toDelete.length) ops.push(sb.from('bad_stock_fresh_market').delete().in('id', toDelete));
 
         return Promise.all(ops);
