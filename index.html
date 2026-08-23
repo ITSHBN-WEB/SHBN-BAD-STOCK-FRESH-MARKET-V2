@@ -1497,22 +1497,26 @@
   // Lets IT staff copy a pending batch's line items — Material, Qty, UOM,
   // Plant, SLoc, Reason, in that exact column order — as tab-separated
   // text, ready to paste directly into an SAP GUI grid. Batches can run
-  // well past 10 items, so this chunks the copy into groups of 10 with
-  // Prev/Next navigation rather than one giant paste.
-  var SAP_CHUNK_SIZE = 10;
+  // well past one screen, so this chunks the copy with Prev/Next
+  // navigation rather than one giant paste. Chunk size is adjustable per
+  // batch (defaults to 7) via the number input in the section itself.
+  var DEFAULT_SAP_CHUNK_SIZE = 7;
 
   function sapTotalChunks(draft){
-    return Math.max(1, Math.ceil(draft.items.length / SAP_CHUNK_SIZE));
+    var size = draft.sapChunkSize || DEFAULT_SAP_CHUNK_SIZE;
+    return Math.max(1, Math.ceil(draft.items.length / size));
   }
 
   function sapCopySectionHtml(key, draft){
+    if(draft.sapChunkSize === undefined) draft.sapChunkSize = DEFAULT_SAP_CHUNK_SIZE;
     if(draft.sapChunkIndex === undefined) draft.sapChunkIndex = 0;
     var totalChunks = sapTotalChunks(draft);
     if(draft.sapChunkIndex >= totalChunks) draft.sapChunkIndex = totalChunks - 1;
     if(draft.sapChunkIndex < 0) draft.sapChunkIndex = 0;
 
-    var start = draft.sapChunkIndex * SAP_CHUNK_SIZE;
-    var chunkItems = draft.items.slice(start, start + SAP_CHUNK_SIZE);
+    var size = draft.sapChunkSize;
+    var start = draft.sapChunkIndex * size;
+    var chunkItems = draft.items.slice(start, start + size);
     var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
 
     var rowsHtml = chunkItems.map(function(it){
@@ -1526,8 +1530,15 @@
 
     return '<hr class="divider">' +
       '<h2><span class="step-badge">&#128203;</span> Copy to SAP</h2>' +
-      '<div class="pending-meta" style="margin-bottom:8px;">Batch ' + (draft.sapChunkIndex + 1) + ' of ' + totalChunks +
-        ' &middot; ' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') + '</div>' +
+      '<div class="pending-meta" style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+        '<span>Batch ' + (draft.sapChunkIndex + 1) + ' of ' + totalChunks +
+        ' &middot; ' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') + '</span>' +
+        '<span style="display:flex;align-items:center;gap:6px;">' +
+          '<label style="margin:0;text-transform:none;font-size:12.5px;">Rows per batch</label>' +
+          '<input type="number" min="1" max="50" step="1" value="' + size + '" style="width:60px;padding:5px 8px;" ' +
+            'onchange="setSapChunkSize(\'' + key + '\', this.value)">' +
+        '</span>' +
+      '</div>' +
       '<table><thead><tr><th>Material</th><th>Qty</th><th>UOM</th><th>Plant</th><th>SLoc</th><th>Reason</th></tr></thead>' +
       '<tbody>' + rowsHtml + '</tbody></table>' +
       '<div class="btn-row">' +
@@ -1536,6 +1547,15 @@
         '<button class="btn ghost" ' + (draft.sapChunkIndex >= totalChunks - 1 ? 'disabled' : '') + ' onclick="sapChunkNext(\'' + key + '\')">Next</button>' +
       '</div>' +
       '<div id="sapCopyStatus_' + safeKey + '"></div>';
+  }
+
+  function setSapChunkSize(key, value){
+    var draft = pendingDraft[key];
+    var size = parseInt(value, 10);
+    if(!size || size < 1) size = 1;
+    draft.sapChunkSize = size;
+    draft.sapChunkIndex = 0; // re-chunking invalidates the old page position
+    renderPendingListFiltered();
   }
 
   function sapChunkPrev(key){
@@ -1553,8 +1573,9 @@
 
   function copySapChunk(key){
     var draft = pendingDraft[key];
-    var start = (draft.sapChunkIndex || 0) * SAP_CHUNK_SIZE;
-    var chunkItems = draft.items.slice(start, start + SAP_CHUNK_SIZE);
+    var size = draft.sapChunkSize || DEFAULT_SAP_CHUNK_SIZE;
+    var start = (draft.sapChunkIndex || 0) * size;
+    var chunkItems = draft.items.slice(start, start + size);
     var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
     var statusEl = document.getElementById('sapCopyStatus_' + safeKey);
 
