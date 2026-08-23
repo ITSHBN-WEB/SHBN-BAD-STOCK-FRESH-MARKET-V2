@@ -228,18 +228,46 @@
   <!-- ============ IT ENTRY TAB ============ -->
   <div id="itTabView" style="display:none;">
     <div class="card">
-      <h2><span class="step-badge">&#9679;</span> Pending Entries<span class="pending-badge" id="pendingCount">0</span></h2>
-      <button class="btn ghost" style="margin-top:0;" onclick="loadPendingEntries()">Refresh</button>
+      <nav class="tabs" style="margin-bottom:14px;">
+        <button id="itSubTabPending" class="active" onclick="switchItSubView('pending')">Pending</button>
+        <button id="itSubTabCompleted" onclick="switchItSubView('completed')">Completed</button>
+      </nav>
+      <div id="itSubViewHeaderPending">
+        <h2><span class="step-badge">&#9679;</span> Pending Entries<span class="pending-badge" id="pendingCount">0</span></h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="loadPendingEntries()">Refresh</button>
+      </div>
+      <div id="itSubViewHeaderCompleted" style="display:none;">
+        <h2><span class="step-badge">&#10003;</span> Completed Entries<span class="pending-badge" id="completedCount">0</span></h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="loadCompletedEntries()">Refresh</button>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>Select Category</h2>
-      <div class="category-picker" id="categoryPicker"></div>
+    <div id="pendingSubView">
+      <div class="card">
+        <h2>Select Category</h2>
+        <div class="category-picker" id="categoryPicker"></div>
+      </div>
+
+      <div id="pendingCategoryEmpty" class="empty" style="display:none;">Select a category above to view its pending entries.</div>
+      <div id="pendingEmpty" class="empty" style="display:none;">No pending entries in this category.</div>
+      <div id="pendingList"></div>
     </div>
 
-    <div id="pendingCategoryEmpty" class="empty" style="display:none;">Select a category above to view its pending entries.</div>
-    <div id="pendingEmpty" class="empty" style="display:none;">No pending entries in this category.</div>
-    <div id="pendingList"></div>
+    <div id="completedSubView" style="display:none;">
+      <div class="card">
+        <h2>Date Range</h2>
+        <div class="category-picker" id="completedDaysPicker"></div>
+      </div>
+
+      <div class="card">
+        <h2>Select Category</h2>
+        <div class="category-picker" id="completedCategoryPicker"></div>
+      </div>
+
+      <div id="completedCategoryEmpty" class="empty" style="display:none;">Select a category above to view completed entries.</div>
+      <div id="completedEmpty" class="empty" style="display:none;">No completed entries in this range.</div>
+      <div id="completedList"></div>
+    </div>
   </div>
 
   <!-- ============ ADMIN TAB ============ -->
@@ -435,6 +463,57 @@
       });
   }
 
+  // ---------- Supabase: getCompletedEntries ----------
+  // Reads status='keyed_in' rows within a rolling window (days back from
+  // now) and groups them the same way as getPendingEntriesFromSupabase,
+  // plus materialDocument/keyInBy at the batch level. Nothing is ever
+  // deleted from Supabase — this is purely a query-side cutoff so the app
+  // doesn't have to pull an ever-growing history into memory. Rows older
+  // than the selected range simply stop being fetched; they're still in
+  // the bad_stock_fresh_market table and remain visible in Supabase itself.
+  function getCompletedEntriesFromSupabase(days){
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+
+    return sb.from('bad_stock_fresh_market')
+      .select('*')
+      .eq('status', 'keyed_in')
+      .gte('entry_date', cutoff.toISOString())
+      .order('entry_date', { ascending: false })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+
+        var batches = {};
+        var order = [];
+
+        res.data.forEach(function(row){
+          if(!batches[row.batch_id]){
+            batches[row.batch_id] = {
+              txnId: row.batch_id,
+              category: row.category,
+              staff: row.staff,
+              supervisor: row.supervisor,
+              dateDisplay: formatDateDisplay(row.entry_date),
+              materialDocument: row.material_document || '',
+              keyInBy: row.key_in_by || '',
+              items: []
+            };
+            order.push(row.batch_id);
+          }
+          batches[row.batch_id].items.push({
+            id: row.id,
+            plu: row.plu_code,
+            description: row.description,
+            material: row.material,
+            uom: row.uom,
+            qty: row.quantity
+          });
+        });
+
+        return order.map(function(key){ return batches[key]; });
+      });
+  }
+
   // Matches your original sheet's "d.M.yyyy h.mm AM/PM" display format
   function formatDateDisplay(isoString){
     var d = new Date(isoString);
@@ -582,6 +661,10 @@
   var adminUnlocked = false;
   var appCategories = [];      // loaded once from getCategories()
   var selectedPendingCategory = null; // which category is currently shown in IT Entry
+  var itEntrySubView = 'pending';     // 'pending' or 'completed', within IT Entry
+  var completedEntries = [];          // raw data from getCompletedEntriesFromSupabase()
+  var selectedCompletedCategory = null;
+  var selectedCompletedDays = 30;     // default date-range filter for Completed view
 
   // ---------- Startup: load masterlist once, cache client-side ----------
   window.addEventListener('DOMContentLoaded', function(){
@@ -1101,6 +1184,149 @@
     renderPendingList(filtered);
   }
 
+  // ---------- IT Entry: Pending / Completed sub-tabs ----------
+
+  function switchItSubView(view){
+    itEntrySubView = view;
+    document.getElementById('pendingSubView').style.display = view === 'pending' ? 'block' : 'none';
+    document.getElementById('completedSubView').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('itSubViewHeaderPending').style.display = view === 'pending' ? 'block' : 'none';
+    document.getElementById('itSubViewHeaderCompleted').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('itSubTabPending').classList.toggle('active', view === 'pending');
+    document.getElementById('itSubTabCompleted').classList.toggle('active', view === 'completed');
+
+    if(view === 'completed'){
+      renderCompletedDaysPicker();
+      loadCompletedEntries();
+    }
+  }
+
+  function renderCompletedDaysPicker(){
+    var picker = document.getElementById('completedDaysPicker');
+    picker.innerHTML = '';
+    [10, 30, 60, 90].forEach(function(days){
+      var chip = document.createElement('div');
+      chip.className = 'category-chip' + (selectedCompletedDays === days ? ' active' : '');
+      chip.textContent = 'Last ' + days + ' Days';
+      chip.onclick = function(){
+        selectedCompletedDays = days;
+        renderCompletedDaysPicker();
+        loadCompletedEntries();
+      };
+      picker.appendChild(chip);
+    });
+  }
+
+  function loadCompletedEntries(){
+    document.getElementById('completedCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    document.getElementById('completedList').innerHTML = '';
+    document.getElementById('completedEmpty').style.display = 'none';
+    document.getElementById('completedCategoryEmpty').style.display = 'none';
+
+    getCompletedEntriesFromSupabase(selectedCompletedDays)
+      .then(function(entries){
+        completedEntries = entries;
+        document.getElementById('completedCount').textContent = entries.length;
+
+        if(selectedCompletedCategory && !entries.some(function(b){ return b.category === selectedCompletedCategory; })){
+          selectedCompletedCategory = null;
+        }
+
+        renderCompletedCategoryPicker();
+        renderCompletedListFiltered();
+      })
+      .catch(function(err){
+        document.getElementById('completedCategoryPicker').innerHTML = '';
+        document.getElementById('completedList').innerHTML =
+          '<div class="status err">Failed to load completed entries: ' + err.message + '</div>';
+      });
+  }
+
+  function renderCompletedCategoryPicker(){
+    var picker = document.getElementById('completedCategoryPicker');
+    picker.innerHTML = '';
+
+    appCategories.forEach(function(cat){
+      var count = completedEntries.filter(function(b){ return b.category === cat; }).length;
+      var chip = document.createElement('div');
+      chip.className = 'category-chip' + (selectedCompletedCategory === cat ? ' active' : '');
+      chip.innerHTML = escapeHtml(cat) + ' <span class="count">' + count + '</span>';
+      chip.onclick = function(){
+        selectedCompletedCategory = cat;
+        renderCompletedCategoryPicker();
+        renderCompletedListFiltered();
+      };
+      picker.appendChild(chip);
+    });
+  }
+
+  function renderCompletedListFiltered(){
+    var container = document.getElementById('completedList');
+    var emptyEl = document.getElementById('completedEmpty');
+    var categoryEmptyEl = document.getElementById('completedCategoryEmpty');
+
+    if(!selectedCompletedCategory){
+      container.innerHTML = '';
+      emptyEl.style.display = 'none';
+      categoryEmptyEl.style.display = 'block';
+      return;
+    }
+    categoryEmptyEl.style.display = 'none';
+
+    var filtered = completedEntries.filter(function(b){ return b.category === selectedCompletedCategory; });
+
+    if(!filtered.length){
+      container.innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    container.innerHTML = '';
+    filtered.forEach(function(batch){
+      var key = batch.txnId;
+
+      // Reuse pendingDraft + printBatch()/sendToPrintStation() as-is by
+      // populating the same shape those functions already expect, with
+      // "submitted" always set — Completed entries are read-only, no
+      // Save Changes / qty editing offered here.
+      pendingDraft[key] = {
+        items: batch.items,
+        materialDocument: batch.materialDocument,
+        keyInBy: batch.keyInBy,
+        pluInput: '',
+        qtyInput: '',
+        submitted: {
+          date: batch.dateDisplay,
+          time: '',
+          category: batch.category,
+          staff: batch.staff,
+          supervisor: batch.supervisor,
+          materialDocument: batch.materialDocument,
+          keyInBy: batch.keyInBy,
+          items: batch.items
+        }
+      };
+
+      var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="pending-card-header">' +
+          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
+        '</div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+        '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(batch.materialDocument) + '</div>' +
+        '<div class="btn-row">' +
+        '<button class="btn secondary" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
+        '<button class="btn ghost" id="sendPrintBtn_' + safeKey + '" onclick="sendToPrintStation(\'' + key + '\')">Send to Print Station</button>' +
+        '</div>' +
+        '<div id="sendPrintStatus_' + safeKey + '"></div>';
+      container.appendChild(card);
+    });
+  }
+
   function renderPendingList(batchesToRender){
     var container = document.getElementById('pendingList');
     container.innerHTML = '';
@@ -1567,7 +1793,8 @@
   function sendToPrintStation(key){
     var draft = pendingDraft[key];
     var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
-                adminPendingEntries.find(function(b){ return pendingKey(b) === key; });
+                adminPendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+                completedEntries.find(function(b){ return pendingKey(b) === key; });
     if(!draft || !batch) return;
     var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
     var btn = document.getElementById('sendPrintBtn_' + safeKey);
