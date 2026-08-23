@@ -479,12 +479,18 @@
             };
             order.push(row.batch_id);
           }
+          var masterMatch = masterlistByPlu[String(row.plu_code).trim()];
           batches[row.batch_id].items.push({
             id: row.id,             // needed later to update/delete this exact row
             plu: row.plu_code,
-            description: row.description,
-            material: row.material,
-            uom: row.uom,
+            // Falls back to the masterlist cache when the stored value is
+            // blank — this is how a previously-unmatched item (added
+            // before its PLU existed in Masterlist) self-heals once an
+            // admin adds it, without silently overwriting items that were
+            // already matched correctly at submission time.
+            description: row.description || (masterMatch ? masterMatch.description : ''),
+            material: row.material || (masterMatch ? masterMatch.material : ''),
+            uom: row.uom || (masterMatch ? masterMatch.uom : ''),
             qty: row.quantity
           });
         });
@@ -1117,7 +1123,17 @@
     document.getElementById('pendingEmpty').style.display = 'none';
     document.getElementById('pendingCategoryEmpty').style.display = 'none';
 
-    getPendingEntriesFromSupabase()
+    // Refresh the masterlist cache first — picks up anything an admin just
+    // added (potentially from a different device/session), so the
+    // description/material/uom fallback in getPendingEntriesFromSupabase()
+    // below has the latest data to work with.
+    getMasterlistFromSupabase()
+      .then(function(list){
+        masterlist = list;
+        masterlistByPlu = {};
+        list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
+        return getPendingEntriesFromSupabase();
+      })
       .then(function(entries){
         pendingEntries = entries;
         document.getElementById('pendingCount').textContent = entries.length;
