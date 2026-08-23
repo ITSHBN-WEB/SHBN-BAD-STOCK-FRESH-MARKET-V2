@@ -386,6 +386,36 @@
       });
   }
 
+  // ---------- Supabase: addMasterlistItem (Admin: Add/Update Masterlist) ----------
+  // No unique constraint on plu_code in the masterlist table, so this does
+  // a manual check-then-update-or-insert (rather than a Postgres upsert,
+  // which needs a unique/conflict target to work correctly) — matches the
+  // {updated: true/false} shape submitMasterlistItem()'s status message
+  // already expects.
+  function addMasterlistItemToSupabase(plu, description, material, uom){
+    return sb.from('masterlist').select('id').eq('plu_code', plu)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+
+        if(res.data && res.data.length){
+          return sb.from('masterlist')
+            .update({ description: description, material: material, uom: uom })
+            .eq('plu_code', plu)
+            .then(function(updRes){
+              if(updRes.error) throw new Error(updRes.error.message);
+              return { updated: true };
+            });
+        }
+
+        return sb.from('masterlist')
+          .insert([{ plu_code: plu, description: description, material: material, uom: uom }])
+          .then(function(insRes){
+            if(insRes.error) throw new Error(insRes.error.message);
+            return { updated: false };
+          });
+      });
+  }
+
   // ---------- Supabase: submitBadStock ----------
   // Inserts one row per cart item into bad_stock_fresh_market, all sharing
   // a freshly generated batch_id so IT Entry can group them back into one
@@ -1890,7 +1920,7 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
 
-    apiPost('addMasterlistItem', { description: description, plu: plu, material: material, uom: uom })
+    addMasterlistItemToSupabase(plu, description, material, uom)
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok">' + (res.updated ? 'Updated existing PLU in Masterlist.' : 'Added new item to Masterlist.') + '</div>';
         document.getElementById('adminPlu').value = '';
