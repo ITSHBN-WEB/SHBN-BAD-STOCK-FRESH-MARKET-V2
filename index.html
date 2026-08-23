@@ -1541,9 +1541,28 @@
     setTimeout(function(){ win.focus(); win.print(); }, 300);
   }
 
-  // ---------- Send to Print Station (new — nothing above this point was changed) ----------
+  // ---------- Send to Print Station (Supabase print_queue table) ----------
   // Queues this batch for the shared Print Station page instead of printing
-  // locally. Polls for the result so the person gets a confirmation either way.
+  // locally. Print Station itself now reads Fresh Market's queue directly
+  // from Supabase (print_queue + bad_stock_fresh_market), no Apps Script
+  // involved on this side any more.
+
+  function requestPrintToSupabase(batchId){
+    var requestId = 'PR' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    return sb.from('print_queue').insert([{ request_id: requestId, batch_id: batchId, status: 'PENDING' }])
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return { requestId: requestId };
+      });
+  }
+
+  function fetchPrintRequestStatusFromSupabase(requestId){
+    return sb.from('print_queue').select('status').eq('request_id', requestId).single()
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return { status: res.data.status };
+      });
+  }
 
   function sendToPrintStation(key){
     var draft = pendingDraft[key];
@@ -1557,9 +1576,9 @@
     if(btn) btn.disabled = true;
 
     // If this batch hasn't been submitted yet, save its current items to
-    // the sheet first — the Print Station reads straight from the sheet
-    // (getBatchPrintData), so an unsaved edit here would otherwise print
-    // stale data. Already-completed batches skip straight to queuing.
+    // Supabase first — Print Station reads straight from
+    // bad_stock_fresh_market, so an unsaved edit here would otherwise
+    // print stale data. Already-completed batches skip straight to queuing.
     var ensureSaved = draft.submitted
       ? Promise.resolve()
       : (statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving changes...</div>', persistPendingDraft(key));
@@ -1567,7 +1586,7 @@
     ensureSaved
       .then(function(){
         statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Sending...</div>';
-        return apiPost('requestPrint', { txnId: batch.txnId });
+        return requestPrintToSupabase(batch.txnId);
       })
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Waiting for Print Station...</div>';
@@ -1579,24 +1598,12 @@
       });
   }
 
-  // apiGet() above only takes a bare action name, so the request id is
-  // appended to the query string directly here rather than changing that
-  // shared helper.
-  function fetchPrintRequestStatus(requestId){
-    return fetch(EXEC_URL + '?action=getPrintRequestStatus&requestId=' + encodeURIComponent(requestId))
-      .then(function (res) { return res.json(); })
-      .then(function (json) {
-        if (!json.success) throw new Error(json.error || 'Request failed.');
-        return json.data;
-      });
-  }
-
   function pollPrintRequest(requestId, safeKey, btn, statusEl){
     var attempts = 0;
     var maxAttempts = 40; // ~2 minutes at 3s intervals
     var interval = setInterval(function(){
       attempts++;
-      fetchPrintRequestStatus(requestId)
+      fetchPrintRequestStatusFromSupabase(requestId)
         .then(function(data){
           if(data.status === 'PRINTED'){
             clearInterval(interval);
