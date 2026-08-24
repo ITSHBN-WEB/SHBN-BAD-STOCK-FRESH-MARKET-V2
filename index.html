@@ -1218,7 +1218,9 @@
             // overwritten.
             var freshByPlu = {};
             batch.items.forEach(function(it){ freshByPlu[String(it.plu).trim()] = it; });
+            var seenPlus = {};
             pendingDraft[key].items.forEach(function(it){
+              seenPlus[String(it.plu).trim()] = true;
               if(it.isNew) return; // not yet saved to the sheet — nothing to refresh against
               var fresh = freshByPlu[String(it.plu).trim()];
               if(fresh){
@@ -1226,6 +1228,16 @@
                 it.material = fresh.material;
                 it.uom = fresh.uom;
                 if(!it.dirty) it.qty = fresh.qty;
+              }
+            });
+            // A separate submission (same day/staff/supervisor/category)
+            // can merge a brand-new PLU into this batch server-side —
+            // one the local cache has never seen before. Add it in now,
+            // rather than only refreshing PLUs already present locally.
+            batch.items.forEach(function(fresh){
+              var pluKey = String(fresh.plu).trim();
+              if(!seenPlus[pluKey]){
+                pendingDraft[key].items.push(Object.assign({}, fresh, {isNew:false, dirty:false}));
               }
             });
           }
