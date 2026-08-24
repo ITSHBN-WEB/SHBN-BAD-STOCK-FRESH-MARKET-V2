@@ -1198,7 +1198,7 @@
           var key = pendingKey(batch);
           if(!pendingDraft[key]){
             pendingDraft[key] = {
-              items: batch.items.map(function(it){ return Object.assign({}, it, {isNew:false}); }),
+              items: batch.items.map(function(it){ return Object.assign({}, it, {isNew:false, dirty:false}); }),
               materialDocument: '',
               keyInBy: '',
               pluInput: '',
@@ -1209,9 +1209,13 @@
             // Batch was already cached from an earlier load — refresh each
             // existing item's Description/Material/UOM from the server's
             // latest data (e.g. an admin just added a previously-missing
-            // PLU to the Masterlist), WITHOUT touching local qty edits or
-            // any not-yet-saved new items, so "not in Masterlist" clears
-            // once the person taps Refresh instead of staying stuck.
+            // PLU to the Masterlist). Quantity is refreshed too UNLESS the
+            // person has manually edited it in this session (it.dirty) —
+            // a second New Entry submission on the same day merges into
+            // this same row server-side (summing quantity), so an
+            // untouched item should pick that up on refresh; only an
+            // actual in-progress local edit should be protected from being
+            // overwritten.
             var freshByPlu = {};
             batch.items.forEach(function(it){ freshByPlu[String(it.plu).trim()] = it; });
             pendingDraft[key].items.forEach(function(it){
@@ -1221,6 +1225,7 @@
                 it.description = fresh.description;
                 it.material = fresh.material;
                 it.uom = fresh.uom;
+                if(!it.dirty) it.qty = fresh.qty;
               }
             });
           }
@@ -1523,6 +1528,7 @@
         }
         val = roundQty(val);
         pendingDraft[key].items[idx].qty = val;
+        pendingDraft[key].items[idx].dirty = true;
         input.value = val;
       });
     });
@@ -1737,7 +1743,7 @@
     return saveITEntryDraftToSupabase(batch.txnId, draft.items, {
       category: batch.category, staff: batch.staff, supervisor: batch.supervisor
     }).then(function(){
-      draft.items.forEach(function(it){ it.isNew = false; });
+      draft.items.forEach(function(it){ it.isNew = false; it.dirty = false; });
     });
   }
 
