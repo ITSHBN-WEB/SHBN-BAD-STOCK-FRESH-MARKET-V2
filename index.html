@@ -871,7 +871,7 @@
   var pendingEntries = [];     // raw data from getPendingEntries()
   var pendingDraft = {};       // keyed by txnId -> { items, materialDocument, keyInBy }
   var adminUnlocked = false;
-  var appCategories = [];      // loaded once from getCategories()
+  var appCategories = [];      // set once from FRESH_MARKET_CATEGORIES
   var selectedPendingCategory = null; // which category is currently shown in IT Entry
   var itEntrySubView = 'pending';     // 'pending' or 'completed', within IT Entry
   var completedEntries = [];          // raw data from getCompletedEntriesFromSupabase()
@@ -893,41 +893,41 @@
       });
   });
 
+  // Hardcoded rather than fetched from the legacy Apps Script backend —
+  // this list changes rarely (only once so far, adding "Frozen & Dried
+  // Food"), and removing this call is one less thing still depending on
+  // Apps Script. Update this array directly whenever a category is
+  // added/renamed.
+  var FRESH_MARKET_CATEGORIES = ['Meat & Seafood', 'Local Vege', 'Import Vege', 'Fruit', 'Frozen & Dried Food'];
+
   function loadCategories(){
-    apiGet('getCategories')
-      .then(function(categories){
-        appCategories = categories; // still used for IT Entry / Admin category chips
-        document.getElementById('loadingView').style.display = 'none';
-        showTab('new');
+    appCategories = FRESH_MARKET_CATEGORIES; // still used for IT Entry / Admin category chips
+    document.getElementById('loadingView').style.display = 'none';
+    showTab('new');
 
-        var draft = loadDraft();
-        if(draft && draft.staff && draft.supervisor){
-          sessionStaff = draft.staff;
-          sessionSupervisor = draft.supervisor;
-          cart = draft.cart || [];
+    var draft = loadDraft();
+    if(draft && draft.staff && draft.supervisor){
+      sessionStaff = draft.staff;
+      sessionSupervisor = draft.supervisor;
+      cart = draft.cart || [];
 
-          document.getElementById('staffInput').value = sessionStaff;
-          document.getElementById('supervisorInput').value = sessionSupervisor;
+      document.getElementById('staffInput').value = sessionStaff;
+      document.getElementById('supervisorInput').value = sessionSupervisor;
 
-          enterStep2();
-          renderCart();
+      enterStep2();
+      renderCart();
 
-          // Restore an in-progress PLU/qty lookup that hadn't been added
-          // to the cart yet when the connection dropped or the page was
-          // refreshed, so nothing the person typed gets lost.
-          if(draft.pluInput){
-            document.getElementById('pluInput').value = draft.pluInput;
-            lookupPlu();
-            if(draft.qtyInput) document.getElementById('qtyInput').value = draft.qtyInput;
-          }
-        } else {
-          document.getElementById('step1View').style.display = 'block';
-        }
-      })
-      .catch(function(err){
-        document.getElementById('loadingView').innerHTML =
-          '<div class="status err">Failed to load categories: ' + err.message + '</div>';
-      });
+      // Restore an in-progress PLU/qty lookup that hadn't been added
+      // to the cart yet when the connection dropped or the page was
+      // refreshed, so nothing the person typed gets lost.
+      if(draft.pluInput){
+        document.getElementById('pluInput').value = draft.pluInput;
+        lookupPlu();
+        if(draft.qtyInput) document.getElementById('qtyInput').value = draft.qtyInput;
+      }
+    } else {
+      document.getElementById('step1View').style.display = 'block';
+    }
   }
 
   // ---------- Tab switching ----------
