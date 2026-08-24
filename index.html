@@ -302,6 +302,15 @@
       </div>
 
       <div class="card">
+        <h2><span class="step-badge">&#128269;</span> Edit Existing Masterlist Item</h2>
+        <label>PLU Code</label>
+        <input type="text" id="masterlistSearchInput" placeholder="Enter PLU code to search" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMasterlistItem();}">
+        <button class="btn btn-full" onclick="searchMasterlistItem()">Search</button>
+        <div id="masterlistSearchStatus"></div>
+      </div>
+      <div id="masterlistSearchResult"></div>
+
+      <div class="card">
         <h2><span class="step-badge">&#128465;</span> Delete Pending Transaction</h2>
         <button class="btn ghost" style="margin-top:0;" onclick="loadAdminPendingList()">Refresh List</button>
       </div>
@@ -2293,6 +2302,165 @@
         list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
         problemPluEditing = null;
         loadProblemPlus(); // resolved PLU should now disappear from the list
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+      });
+  }
+
+  // ---------- Admin: Edit Existing Masterlist Item ----------
+  // Search a PLU already in the masterlist, edit any field, and require
+  // typing CONFIRM before the update commits — unlike Problem PLUs (filling
+  // in blanks for the first time) or the manual Add/Update form, this can
+  // silently change how an already-in-use, possibly-historical PLU reads
+  // everywhere in the app, so it gets an extra guard rail.
+  var masterlistSearchResult = null;
+  var masterlistEditMode = false;
+  var masterlistConfirmMode = false;
+
+  function searchMasterlistItem(){
+    var plu = document.getElementById('masterlistSearchInput').value.trim();
+    var statusEl = document.getElementById('masterlistSearchStatus');
+    var resultEl = document.getElementById('masterlistSearchResult');
+
+    if(!plu){
+      statusEl.innerHTML = '<div class="status err">Enter a PLU code to search.</div>';
+      resultEl.innerHTML = '';
+      masterlistSearchResult = null;
+      return;
+    }
+
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    resultEl.innerHTML = '';
+    masterlistEditMode = false;
+    masterlistConfirmMode = false;
+
+    sb.from('masterlist').select('*').eq('plu_code', plu)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        if(!res.data.length){
+          statusEl.innerHTML = '<div class="status err">No masterlist item found for PLU "' + escapeHtml(plu) + '".</div>';
+          masterlistSearchResult = null;
+          return;
+        }
+        statusEl.innerHTML = '';
+        masterlistSearchResult = res.data[0];
+        renderMasterlistSearchResult();
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+      });
+  }
+
+  function renderMasterlistSearchResult(){
+    var resultEl = document.getElementById('masterlistSearchResult');
+    resultEl.innerHTML = '';
+    if(!masterlistSearchResult) return;
+
+    var r = masterlistSearchResult;
+    var card = document.createElement('div');
+    card.className = 'card';
+
+    var html =
+      '<div class="pending-card-header">' +
+        '<div><b>PLU ' + escapeHtml(r.plu_code) + '</b></div>' +
+        (!masterlistEditMode ? '<span class="edit-link" onclick="toggleMasterlistEdit()">\u270E Edit</span>' : '') +
+      '</div>';
+
+    if(!masterlistEditMode){
+      html +=
+        '<div class="lookup-preview">' +
+        '<div class="row"><span>Description</span><b>' + escapeHtml(r.description) + '</b></div>' +
+        '<div class="row"><span>Material</span><b>' + escapeHtml(r.material) + '</b></div>' +
+        '<div class="row"><span>UOM</span><b>' + escapeHtml(r.uom) + '</b></div>' +
+        '<div class="row"><span>Category</span><b>' + escapeHtml(r.category || '\u2014') + '</b></div>' +
+        '</div>';
+    } else {
+      var catOptions = appCategories.map(function(c){
+        return '<option value="' + escapeHtml(c) + '"' + (c === r.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+      }).join('');
+
+      html +=
+        '<label>Description</label><input type="text" id="meDesc" value="' + escapeHtml(r.description) + '">' +
+        '<label>Material Code</label><input type="text" id="meMaterial" value="' + escapeHtml(r.material) + '">' +
+        '<label>UOM</label><input type="text" id="meUom" value="' + escapeHtml(r.uom) + '">' +
+        '<label>Category</label><select id="meCategory"><option value="">Select category...</option>' + catOptions + '</select>';
+
+      if(!masterlistConfirmMode){
+        html += '<button class="btn btn-full" onclick="requestMasterlistSave()">Save Changes</button>';
+      } else {
+        html +=
+          '<div class="lookup-preview notfound" style="margin-top:14px;">' +
+            'This will overwrite the existing Masterlist entry for PLU ' + escapeHtml(r.plu_code) + '. Type <b>CONFIRM</b> below to proceed.' +
+            '<input type="text" id="meConfirmInput" placeholder="Type CONFIRM" style="margin-top:10px;">' +
+            '<div class="btn-row">' +
+              '<button class="btn ghost" onclick="cancelMasterlistConfirm()">Cancel</button>' +
+              '<button class="btn danger" onclick="confirmMasterlistSave()">Confirm &amp; Save</button>' +
+            '</div>' +
+          '</div>';
+      }
+
+      html += '<div id="masterlistEditStatus"></div>';
+    }
+
+    card.innerHTML = html;
+    resultEl.appendChild(card);
+  }
+
+  function toggleMasterlistEdit(){
+    masterlistEditMode = true;
+    masterlistConfirmMode = false;
+    renderMasterlistSearchResult();
+  }
+
+  function requestMasterlistSave(){
+    var description = document.getElementById('meDesc').value.trim();
+    var category = document.getElementById('meCategory').value;
+    if(!description || !category){
+      document.getElementById('masterlistEditStatus').innerHTML =
+        '<div class="status err">Description and Category are required.</div>';
+      return;
+    }
+    masterlistConfirmMode = true;
+    renderMasterlistSearchResult();
+  }
+
+  function cancelMasterlistConfirm(){
+    masterlistConfirmMode = false;
+    renderMasterlistSearchResult();
+  }
+
+  function confirmMasterlistSave(){
+    var confirmInput = document.getElementById('meConfirmInput');
+    if(confirmInput.value.trim() !== 'CONFIRM'){
+      confirmInput.style.borderColor = 'var(--danger)';
+      confirmInput.placeholder = 'Type CONFIRM exactly';
+      return;
+    }
+
+    var plu = masterlistSearchResult.plu_code;
+    var description = document.getElementById('meDesc').value.trim();
+    var material = document.getElementById('meMaterial').value.trim();
+    var uom = document.getElementById('meUom').value.trim();
+    var category = document.getElementById('meCategory').value;
+
+    var statusEl = document.getElementById('masterlistEditStatus');
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+
+    addMasterlistItemToSupabase(plu, description, material, uom, category)
+      .then(function(){
+        return getMasterlistFromSupabase();
+      })
+      .then(function(list){
+        masterlist = list;
+        masterlistByPlu = {};
+        list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
+
+        masterlistSearchResult = { plu_code: plu, description: description, material: material, uom: uom, category: category };
+        masterlistEditMode = false;
+        masterlistConfirmMode = false;
+        renderMasterlistSearchResult();
+        document.getElementById('masterlistSearchStatus').innerHTML = '<div class="status ok">Masterlist item updated.</div>';
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
