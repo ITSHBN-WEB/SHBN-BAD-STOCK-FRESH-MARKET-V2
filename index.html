@@ -276,6 +276,14 @@
 
     <div id="adminUnlockedView" style="display:none;">
       <div class="card">
+        <h2><span class="step-badge">&#9888;</span> Problem PLUs<span class="pending-badge" id="problemPluCount">0</span></h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="loadProblemPlus()">Refresh</button>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">PLU codes scanned but not yet in the Masterlist. Fixing one here automatically moves every pending entry using that code into its correct category.</p>
+      </div>
+      <div id="problemPluEmpty" class="empty" style="display:none;">No problem PLUs right now.</div>
+      <div id="problemPluList"></div>
+
+      <div class="card">
         <h2><span class="step-badge">+</span> Add / Update Masterlist Item</h2>
         <label>PLU Code</label>
         <input type="text" id="adminPlu" placeholder="e.g. 50046">
@@ -285,6 +293,10 @@
         <input type="text" id="adminMaterial" placeholder="e.g. 10089824">
         <label>UOM</label>
         <input type="text" id="adminUom" placeholder="e.g. KG">
+        <label>Category</label>
+        <select id="adminCategory">
+          <option value="">Select category...</option>
+        </select>
         <button class="btn btn-full" onclick="submitMasterlistItem()">Save to Masterlist</button>
         <div id="adminSaveStatus"></div>
       </div>
@@ -386,14 +398,14 @@
   // which needs a unique/conflict target to work correctly) — matches the
   // {updated: true/false} shape submitMasterlistItem()'s status message
   // already expects.
-  function addMasterlistItemToSupabase(plu, description, material, uom){
+  function addMasterlistItemToSupabase(plu, description, material, uom, category){
     return sb.from('masterlist').select('id').eq('plu_code', plu)
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
 
         if(res.data && res.data.length){
           return sb.from('masterlist')
-            .update({ description: description, material: material, uom: uom })
+            .update({ description: description, material: material, uom: uom, category: category })
             .eq('plu_code', plu)
             .then(function(updRes){
               if(updRes.error) throw new Error(updRes.error.message);
@@ -402,7 +414,7 @@
         }
 
         return sb.from('masterlist')
-          .insert([{ plu_code: plu, description: description, material: material, uom: uom }])
+          .insert([{ plu_code: plu, description: description, material: material, uom: uom, category: category }])
           .then(function(insRes){
             if(insRes.error) throw new Error(insRes.error.message);
             return { updated: false };
@@ -422,19 +434,29 @@
   //     submission, just extended across separate same-day submissions).
   //   - New PLU for that batch → inserted as a new row.
   // Plant/SLoc/Reason stay fixed values for every Fresh Market entry.
-  function startOfTodayISO(){
-    var d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
+  function dayBoundsISO(dateLike){
+    var d = new Date(dateLike);
+    var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    var end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { startISO: start.toISOString(), endISO: end.toISOString() };
   }
 
-  function findTodayBatch(category, staff, supervisor, status){
+  // Finds a pending (or other status) batch for a given category/staff/
+  // supervisor within one calendar day. referenceDate defaults to now
+  // (used at submit time); Admin's Problem PLU resolution passes each
+  // unresolved row's own entry_date instead, since a PLU might get fixed
+  // days after it was originally scanned — the same-day rule always
+  // applies to the ROW's day, not "today".
+  function findBatchForDay(category, staff, supervisor, status, referenceDate){
+    var bounds = dayBoundsISO(referenceDate || new Date());
     var query = sb.from('bad_stock_fresh_market')
       .select('batch_id, plu_code, quantity, id')
       .eq('status', status)
       .eq('staff', staff)
       .eq('supervisor', supervisor)
-      .gte('entry_date', startOfTodayISO());
+      .gte('entry_date', bounds.startISO)
+      .lt('entry_date', bounds.endISO);
     query = category ? query.eq('category', category) : query.is('category', null);
 
     return query.then(function(res){
@@ -445,7 +467,7 @@
   }
 
   function submitGroupToSupabase(category, staff, supervisor, status, groupItems){
-    return findTodayBatch(category, staff, supervisor, status)
+    return findBatchForDay(category, staff, supervisor, status, new Date())
       .then(function(existing){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         var existingByPlu = {};
@@ -511,6 +533,98 @@
     }, Promise.resolve()).then(function(){
       return { count: items.length };
     });
+  }
+
+  // ---------- Supabase: resolveProblemPlu (Admin: Problem PLUs) ----------
+  // Fixing an unresolved PLU means every bad_stock_fresh_market row that
+  // used it needs to move OUT of its category-less "unresolved" bucket
+  // and INTO the correct real-category pending batch — following the same
+  // same-day/staff/supervisor stacking rule used at submission time, but
+  // anchored to each row's own entry_date rather than "today", since a
+  // PLU might get fixed days after it was originally scanned.
+  function resolveUnresolvedRowsForPlu(plu, description, material, uom, category){
+    return sb.from('bad_stock_fresh_market')
+      .select('*')
+      .eq('plu_code', plu)
+      .eq('status', 'unresolved')
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        var rows = res.data;
+        if(!rows.length) return true;
+
+        // Group by staff + supervisor + calendar day — each group needs
+        // its own find-or-create pending batch, since different days or
+        // different staff/supervisor pairs must never share a batch.
+        var groups = {};
+        rows.forEach(function(row){
+          var day = new Date(row.entry_date);
+          day.setHours(0, 0, 0, 0);
+          var groupKey = row.staff + '||' + row.supervisor + '||' + day.toISOString();
+          if(!groups[groupKey]) groups[groupKey] = [];
+          groups[groupKey].push(row);
+        });
+
+        var groupKeys = Object.keys(groups);
+        return groupKeys.reduce(function(chain, gKey){
+          return chain.then(function(){
+            var groupRows = groups[gKey];
+            var first = groupRows[0];
+
+            return findBatchForDay(category, first.staff, first.supervisor, 'pending', first.entry_date)
+              .then(function(existing){
+                var ops = [];
+                var totalQty = Math.round(groupRows.reduce(function(sum, r){ return sum + r.quantity; }, 0) * 100) / 100;
+
+                if(existing){
+                  var existingByPlu = {};
+                  existing.existingRows.forEach(function(r){ existingByPlu[String(r.plu_code).trim()] = r; });
+                  var targetRow = existingByPlu[String(plu).trim()];
+
+                  if(targetRow){
+                    // The target batch already has a row for this PLU
+                    // (e.g. someone submitted it correctly matched later
+                    // that same day) — merge this quantity into it and
+                    // drop the now-redundant unresolved row(s).
+                    var mergedQty = Math.round((targetRow.quantity + totalQty) * 100) / 100;
+                    ops.push(sb.from('bad_stock_fresh_market').update({ quantity: mergedQty }).eq('id', targetRow.id));
+                    ops.push(sb.from('bad_stock_fresh_market').delete().in('id', groupRows.map(function(r){ return r.id; })));
+                  } else {
+                    // Repoint the first row into the existing batch with
+                    // the resolved details; fold any extra same-plu rows'
+                    // quantity into it and delete those extras.
+                    ops.push(sb.from('bad_stock_fresh_market').update({
+                      batch_id: existing.batchId, category: category, status: 'pending',
+                      description: description, material: material, uom: uom, quantity: totalQty
+                    }).eq('id', first.id));
+                    if(groupRows.length > 1){
+                      ops.push(sb.from('bad_stock_fresh_market').delete().in('id', groupRows.slice(1).map(function(r){ return r.id; })));
+                    }
+                  }
+                } else {
+                  // No pending batch exists yet for that day — this row
+                  // becomes the seed of a brand new one.
+                  var newBatchId = 'B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+                  ops.push(sb.from('bad_stock_fresh_market').update({
+                    batch_id: newBatchId, category: category, status: 'pending',
+                    description: description, material: material, uom: uom, quantity: totalQty
+                  }).eq('id', first.id));
+                  if(groupRows.length > 1){
+                    ops.push(sb.from('bad_stock_fresh_market').delete().in('id', groupRows.slice(1).map(function(r){ return r.id; })));
+                  }
+                }
+
+                return Promise.all(ops);
+              });
+          });
+        }, Promise.resolve());
+      });
+  }
+
+  function resolveProblemPlu(plu, description, material, uom, category){
+    return addMasterlistItemToSupabase(plu, description, material, uom, category)
+      .then(function(){
+        return resolveUnresolvedRowsForPlu(plu, description, material, uom, category);
+      });
   }
 
   // ---------- Supabase: getPendingEntries ----------
@@ -2007,6 +2121,8 @@
           adminUnlocked = true;
           document.getElementById('adminLockView').style.display = 'none';
           document.getElementById('adminUnlockedView').style.display = 'block';
+          populateAdminCategoryDropdown();
+          loadProblemPlus();
           loadAdminPendingList();
         } else {
           statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
@@ -2017,27 +2133,42 @@
       });
   }
 
+  function populateAdminCategoryDropdown(){
+    var select = document.getElementById('adminCategory');
+    // Rebuild rather than append, in case Admin is unlocked more than once
+    // in the same session (appCategories doesn't change mid-session, but
+    // this keeps it safe either way).
+    select.innerHTML = '<option value="">Select category...</option>';
+    appCategories.forEach(function(cat){
+      var opt = document.createElement('option');
+      opt.value = cat; opt.textContent = cat;
+      select.appendChild(opt);
+    });
+  }
+
   function submitMasterlistItem(){
     var plu = document.getElementById('adminPlu').value.trim();
     var description = document.getElementById('adminDescription').value.trim();
     var material = document.getElementById('adminMaterial').value.trim();
     var uom = document.getElementById('adminUom').value.trim();
+    var category = document.getElementById('adminCategory').value;
     var statusEl = document.getElementById('adminSaveStatus');
 
-    if(!plu || !description){
-      statusEl.innerHTML = '<div class="status err">PLU and Description are required.</div>';
+    if(!plu || !description || !category){
+      statusEl.innerHTML = '<div class="status err">PLU, Description, and Category are required.</div>';
       return;
     }
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
 
-    addMasterlistItemToSupabase(plu, description, material, uom)
+    addMasterlistItemToSupabase(plu, description, material, uom, category)
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok">' + (res.updated ? 'Updated existing PLU in Masterlist.' : 'Added new item to Masterlist.') + '</div>';
         document.getElementById('adminPlu').value = '';
         document.getElementById('adminDescription').value = '';
         document.getElementById('adminMaterial').value = '';
         document.getElementById('adminUom').value = '';
+        document.getElementById('adminCategory').value = '';
 
         // refresh local masterlist cache so New Entry / IT Entry lookups see it immediately
         getMasterlistFromSupabase().then(function(list){
@@ -2045,6 +2176,123 @@
           masterlistByPlu = {};
           list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
         });
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+      });
+  }
+
+  // ---------- Admin: Problem PLUs ----------
+  // Distinct list of unresolved PLU codes (deduplicated across every batch/
+  // transaction that hit them) — fixing one here resolves every occurrence
+  // at once via resolveProblemPlu().
+  var problemPlus = [];
+  var problemPluEditing = null; // plu code currently expanded for editing
+
+  function loadProblemPlus(){
+    document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    document.getElementById('problemPluEmpty').style.display = 'none';
+
+    sb.from('bad_stock_fresh_market').select('plu_code, quantity').eq('status', 'unresolved')
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        var grouped = {};
+        res.data.forEach(function(row){
+          var key = String(row.plu_code).trim();
+          if(!grouped[key]) grouped[key] = { plu: key, count: 0, totalQty: 0 };
+          grouped[key].count++;
+          grouped[key].totalQty += row.quantity;
+        });
+        problemPlus = Object.keys(grouped).map(function(k){
+          var p = grouped[k];
+          p.totalQty = Math.round(p.totalQty * 100) / 100;
+          return p;
+        });
+        document.getElementById('problemPluCount').textContent = problemPlus.length;
+        renderProblemPlus();
+      })
+      .catch(function(err){
+        document.getElementById('problemPluList').innerHTML =
+          '<div class="status err">Failed to load problem PLUs: ' + err.message + '</div>';
+      });
+  }
+
+  function renderProblemPlus(){
+    var container = document.getElementById('problemPluList');
+    var emptyEl = document.getElementById('problemPluEmpty');
+    container.innerHTML = '';
+
+    if(!problemPlus.length){
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    problemPlus.forEach(function(p){
+      var safePlu = p.plu.replace(/[^a-zA-Z0-9]/g,'_');
+      var isEditing = problemPluEditing === p.plu;
+      var card = document.createElement('div');
+      card.className = 'card';
+
+      var html =
+        '<div class="pending-card-header">' +
+          '<div><b>PLU ' + escapeHtml(p.plu) + '</b></div>' +
+          '<span class="edit-link" onclick="toggleProblemPluEdit(\'' + p.plu + '\')">' + (isEditing ? 'Cancel' : '\u270E Edit') + '</span>' +
+        '</div>' +
+        '<div class="pending-meta">' + p.count + ' entr' + (p.count === 1 ? 'y' : 'ies') + ' &middot; ' + p.totalQty + ' total qty</div>';
+
+      if(isEditing){
+        var catOptions = appCategories.map(function(c){
+          return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+        }).join('');
+        html +=
+          '<label>Description</label>' +
+          '<input type="text" id="ppDesc_' + safePlu + '" placeholder="e.g. FRESH WHOLE CHICKEN">' +
+          '<label>Material Code</label>' +
+          '<input type="text" id="ppMaterial_' + safePlu + '" placeholder="e.g. 10089824">' +
+          '<label>UOM</label>' +
+          '<input type="text" id="ppUom_' + safePlu + '" placeholder="e.g. KG">' +
+          '<label>Category</label>' +
+          '<select id="ppCategory_' + safePlu + '"><option value="">Select category...</option>' + catOptions + '</select>' +
+          '<button class="btn btn-full" onclick="saveProblemPlu(\'' + p.plu + '\')">Save to Masterlist</button>' +
+          '<div id="ppStatus_' + safePlu + '"></div>';
+      }
+
+      card.innerHTML = html;
+      container.appendChild(card);
+    });
+  }
+
+  function toggleProblemPluEdit(plu){
+    problemPluEditing = (problemPluEditing === plu) ? null : plu;
+    renderProblemPlus();
+  }
+
+  function saveProblemPlu(plu){
+    var safePlu = plu.replace(/[^a-zA-Z0-9]/g,'_');
+    var description = document.getElementById('ppDesc_' + safePlu).value.trim();
+    var material = document.getElementById('ppMaterial_' + safePlu).value.trim();
+    var uom = document.getElementById('ppUom_' + safePlu).value.trim();
+    var category = document.getElementById('ppCategory_' + safePlu).value;
+    var statusEl = document.getElementById('ppStatus_' + safePlu);
+
+    if(!description || !category){
+      statusEl.innerHTML = '<div class="status err">Description and Category are required.</div>';
+      return;
+    }
+
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+
+    resolveProblemPlu(plu, description, material, uom, category)
+      .then(function(){
+        return getMasterlistFromSupabase();
+      })
+      .then(function(list){
+        masterlist = list;
+        masterlistByPlu = {};
+        list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
+        problemPluEditing = null;
+        loadProblemPlus(); // resolved PLU should now disappear from the list
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
