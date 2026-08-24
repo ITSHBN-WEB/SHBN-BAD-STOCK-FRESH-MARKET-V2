@@ -165,7 +165,7 @@
   <!-- ============ NEW ENTRY TAB ============ -->
   <div id="newTabView" style="display:none;">
 
-    <!-- STEP 1: Staff / Supervisor / Category -->
+    <!-- STEP 1: Staff / Supervisor -->
     <div class="card" id="step1View" style="display:none;">
       <h2><span class="step-badge">1</span> Start New Entry</h2>
       <label>Staff Name</label>
@@ -173,11 +173,6 @@
 
       <label>Supervisor Name</label>
       <input type="text" id="supervisorInput" placeholder="Enter supervisor name">
-
-      <label>Bad Stock Category</label>
-      <select id="categoryInput">
-        <option value="">Select category...</option>
-      </select>
 
       <button class="btn btn-full" onclick="goToStep2()">Continue</button>
       <div id="step1Status"></div>
@@ -187,8 +182,7 @@
     <div id="step2View" style="display:none;">
       <div class="summary-bar">
         <div class="info">
-          <b id="summaryStaff"></b> &middot; <span id="summarySupervisor"></span><br>
-          <span id="summaryCategory"></span>
+          <b id="summaryStaff"></b> &middot; <span id="summarySupervisor"></span>
         </div>
         <div class="btn-row" style="margin-top:0;">
           <span class="edit-link" onclick="backToStep1()">Edit</span>
@@ -214,7 +208,7 @@
         <div id="cartEmpty" class="empty">No items added yet.</div>
         <table id="cartTable" style="display:none;">
           <thead>
-            <tr><th>Description</th><th>PLU</th><th>UOM</th><th>Qty</th><th></th></tr>
+            <tr><th>Description</th><th>PLU</th><th>Category</th><th>UOM</th><th>Qty</th><th></th></tr>
           </thead>
           <tbody id="cartBody"></tbody>
         </table>
@@ -381,7 +375,7 @@
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
         return res.data.map(function(row){
-          return { plu: row.plu_code, description: row.description, material: row.material, uom: row.uom };
+          return { plu: row.plu_code, description: row.description, material: row.material, uom: row.uom, category: row.category };
         });
       });
   }
@@ -417,38 +411,106 @@
   }
 
   // ---------- Supabase: submitBadStock ----------
-  // Inserts one row per cart item into bad_stock_fresh_market, all sharing
-  // a freshly generated batch_id so IT Entry can group them back into one
-  // transaction later. Plant/SLoc/Reason are fixed values for every Fresh
-  // Market entry, confirmed with Kirikko — not sourced from the UI.
-  function submitBadStockToSupabase(staff, supervisor, category, items){
-    var batchId = 'B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    var now = new Date().toISOString();
+  // Cart items no longer share one category (category now comes from each
+  // item's own masterlist lookup), so this splits the cart into one group
+  // per category — plus a separate "unresolved" group (category = null)
+  // for unmatched "Proceed Anyway" items — and for each group either
+  // stacks into today's existing pending batch for that same
+  // staff+supervisor+category, or starts a new one:
+  //   - Same PLU already in that batch → quantity sums into the existing
+  //     row (matches the merge behavior already used within one
+  //     submission, just extended across separate same-day submissions).
+  //   - New PLU for that batch → inserted as a new row.
+  // Plant/SLoc/Reason stay fixed values for every Fresh Market entry.
+  function startOfTodayISO(){
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
 
-    var rows = items.map(function(item){
-      return {
-        batch_id: batchId,
-        entry_date: now,
-        category: category,
-        staff: staff,
-        supervisor: supervisor,
-        plu_code: item.plu,
-        description: item.description,
-        material: item.material,
-        quantity: item.qty,
-        uom: item.uom,
-        plant: '1008',
-        sloc: '1000',
-        reason: '2',
-        status: 'pending'
-      };
+  function findTodayBatch(category, staff, supervisor, status){
+    var query = sb.from('bad_stock_fresh_market')
+      .select('batch_id, plu_code, quantity, id')
+      .eq('status', status)
+      .eq('staff', staff)
+      .eq('supervisor', supervisor)
+      .gte('entry_date', startOfTodayISO());
+    query = category ? query.eq('category', category) : query.is('category', null);
+
+    return query.then(function(res){
+      if(res.error) throw new Error(res.error.message);
+      if(!res.data.length) return null;
+      return { batchId: res.data[0].batch_id, existingRows: res.data };
+    });
+  }
+
+  function submitGroupToSupabase(category, staff, supervisor, status, groupItems){
+    return findTodayBatch(category, staff, supervisor, status)
+      .then(function(existing){
+        var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
+        var existingByPlu = {};
+        if(existing){
+          existing.existingRows.forEach(function(r){ existingByPlu[String(r.plu_code).trim()] = r; });
+        }
+
+        var now = new Date().toISOString();
+        var ops = [];
+        var newRows = [];
+
+        groupItems.forEach(function(item){
+          var existingRow = existingByPlu[String(item.plu).trim()];
+          if(existingRow){
+            var newQty = Math.round((existingRow.quantity + item.qty) * 100) / 100;
+            ops.push(sb.from('bad_stock_fresh_market').update({ quantity: newQty }).eq('id', existingRow.id));
+          } else {
+            newRows.push({
+              batch_id: batchId,
+              entry_date: now,
+              category: category,
+              staff: staff,
+              supervisor: supervisor,
+              plu_code: item.plu,
+              description: item.description,
+              material: item.material,
+              quantity: item.qty,
+              uom: item.uom,
+              plant: '1008',
+              sloc: '1000',
+              reason: '2',
+              status: status
+            });
+          }
+        });
+
+        if(newRows.length) ops.push(sb.from('bad_stock_fresh_market').insert(newRows));
+
+        return Promise.all(ops).then(function(results){
+          results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+          return true;
+        });
+      });
+  }
+
+  function submitBadStockToSupabase(staff, supervisor, items){
+    var groups = {};
+    items.forEach(function(item){
+      var key = item.category || '__UNRESOLVED__';
+      if(!groups[key]) groups[key] = [];
+      groups[key].push(item);
     });
 
-    return sb.from('bad_stock_fresh_market').insert(rows)
-      .then(function(res){
-        if(res.error) throw new Error(res.error.message);
-        return { count: items.length, batchId: batchId };
+    var groupKeys = Object.keys(groups);
+
+    return groupKeys.reduce(function(chain, key){
+      return chain.then(function(){
+        var isUnresolved = key === '__UNRESOLVED__';
+        var category = isUnresolved ? null : key;
+        var status = isUnresolved ? 'unresolved' : 'pending';
+        return submitGroupToSupabase(category, staff, supervisor, status, groups[key]);
       });
+    }, Promise.resolve()).then(function(){
+      return { count: items.length };
+    });
   }
 
   // ---------- Supabase: getPendingEntries ----------
@@ -720,26 +782,18 @@
   function loadCategories(){
     apiGet('getCategories')
       .then(function(categories){
-        appCategories = categories;
-        var select = document.getElementById('categoryInput');
-        categories.forEach(function(cat){
-          var opt = document.createElement('option');
-          opt.value = cat; opt.textContent = cat;
-          select.appendChild(opt);
-        });
+        appCategories = categories; // still used for IT Entry / Admin category chips
         document.getElementById('loadingView').style.display = 'none';
         showTab('new');
 
         var draft = loadDraft();
-        if(draft && draft.staff && draft.supervisor && draft.category){
+        if(draft && draft.staff && draft.supervisor){
           sessionStaff = draft.staff;
           sessionSupervisor = draft.supervisor;
-          sessionCategory = draft.category;
           cart = draft.cart || [];
 
           document.getElementById('staffInput').value = sessionStaff;
           document.getElementById('supervisorInput').value = sessionSupervisor;
-          document.getElementById('categoryInput').value = sessionCategory;
 
           enterStep2();
           renderCart();
@@ -791,7 +845,6 @@
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         staff: sessionStaff,
         supervisor: sessionSupervisor,
-        category: sessionCategory,
         cart: cart,
         pluInput: pluEl ? pluEl.value : '',
         qtyInput: qtyEl ? qtyEl.value : ''
@@ -812,20 +865,19 @@
     try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ }
   }
 
-  var sessionStaff = '', sessionSupervisor = '', sessionCategory = '';
+  var sessionStaff = '', sessionSupervisor = '';
 
   function goToStep2(){
     var staff = document.getElementById('staffInput').value.trim();
     var supervisor = document.getElementById('supervisorInput').value.trim();
-    var category = document.getElementById('categoryInput').value;
     var statusEl = document.getElementById('step1Status');
 
-    if(!staff || !supervisor || !category){
-      statusEl.innerHTML = '<div class="status err">Please fill in staff, supervisor, and category.</div>';
+    if(!staff || !supervisor){
+      statusEl.innerHTML = '<div class="status err">Please fill in staff and supervisor.</div>';
       return;
     }
     statusEl.innerHTML = '';
-    sessionStaff = staff; sessionSupervisor = supervisor; sessionCategory = category;
+    sessionStaff = staff; sessionSupervisor = supervisor;
     enterStep2();
     saveDraft();
   }
@@ -833,7 +885,6 @@
   function enterStep2(){
     document.getElementById('summaryStaff').textContent = sessionStaff;
     document.getElementById('summarySupervisor').textContent = sessionSupervisor;
-    document.getElementById('summaryCategory').textContent = sessionCategory;
 
     document.getElementById('step1View').style.display = 'none';
     document.getElementById('step2View').style.display = 'block';
@@ -848,7 +899,7 @@
     if(cart.length && !confirm('Discard this entry? Any items you\'ve added but not submitted will be lost.')) {
       return;
     }
-    sessionStaff = ''; sessionSupervisor = ''; sessionCategory = '';
+    sessionStaff = ''; sessionSupervisor = '';
     cart = [];
     currentLookup = null;
     unmatchedConfirmed = false;
@@ -857,7 +908,6 @@
 
     document.getElementById('staffInput').value = '';
     document.getElementById('supervisorInput').value = '';
-    document.getElementById('categoryInput').value = '';
     document.getElementById('pluInput').value = '';
     document.getElementById('qtyInput').value = '';
     document.getElementById('lookupPreview').innerHTML = '';
@@ -930,12 +980,13 @@
     var match = masterlistByPlu[plu];
 
     if(match){
-      currentLookup = { plu: plu, description: match.description, material: match.material, uom: match.uom, unmatched: false };
+      currentLookup = { plu: plu, description: match.description, material: match.material, uom: match.uom, category: match.category, unmatched: false };
       previewEl.innerHTML =
         '<div class="lookup-preview">' +
         '<div class="row"><span>Description</span><b>' + escapeHtml(match.description) + '</b></div>' +
         '<div class="row"><span>Material</span><b>' + escapeHtml(match.material) + '</b></div>' +
         '<div class="row"><span>UOM</span><b>' + escapeHtml(match.uom) + '</b></div>' +
+        '<div class="row"><span>Category</span><b>' + escapeHtml(match.category || '\u2014') + '</b></div>' +
         '</div>';
       qtySection.style.display = 'block';
       document.getElementById('qtyInput').focus();
@@ -953,7 +1004,10 @@
         '<button type="button" class="btn ghost" onclick="confirmUnmatchedPlu()">Proceed anyway</button>' +
         '</div></div>';
     } else {
-      currentLookup = { plu: plu, description: '', material: '', uom: '', unmatched: true };
+      // No category available for an unmatched item — it goes into a
+      // separate "unresolved" batch at submit time until an admin adds it
+      // to the masterlist with a category via Problem PLUs.
+      currentLookup = { plu: plu, description: '', material: '', uom: '', category: null, unmatched: true };
       previewEl.innerHTML =
         '<div class="lookup-preview notfound">' +
         'This PLU isn\'t in the Masterlist yet. It will still be submitted, but flagged red for admin review until it\'s added.' +
@@ -1005,6 +1059,7 @@
         description: currentLookup.description,
         material: currentLookup.material,
         uom: currentLookup.uom,
+        category: currentLookup.category || null,
         qty: qty,
         unmatched: !!currentLookup.unmatched
       });
@@ -1049,9 +1104,11 @@
       if(item.unmatched) tr.style.background = 'var(--danger-soft)';
       var descDisplay = item.description ? escapeHtml(item.description) : '<span style="color:var(--danger);">(Not in Masterlist)</span>';
       var uomDisplay = item.uom ? escapeHtml(item.uom) : '—';
+      var catDisplay = item.category ? escapeHtml(item.category) : '—';
       tr.innerHTML =
         '<td>' + descDisplay + '</td>' +
         '<td>' + escapeHtml(item.plu) + '</td>' +
+        '<td>' + catDisplay + '</td>' +
         '<td>' + uomDisplay + '</td>' +
         '<td><div class="qty-cell"><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + item.qty + '" data-idx="' + idx + '" class="qty-edit"></div></td>' +
         '<td><span class="remove-btn" data-idx="' + idx + '">&times;</span></td>';
@@ -1095,7 +1152,7 @@
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
     document.getElementById('submitBtn').disabled = true;
 
-    submitBadStockToSupabase(sessionStaff, sessionSupervisor, sessionCategory, cart)
+    submitBadStockToSupabase(sessionStaff, sessionSupervisor, cart)
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok">' + res.count + ' item(s) submitted successfully.</div>';
         cart = [];
@@ -1104,7 +1161,6 @@
         setTimeout(function(){
           document.getElementById('staffInput').value = '';
           document.getElementById('supervisorInput').value = '';
-          document.getElementById('categoryInput').value = '';
           statusEl.innerHTML = '';
           backToStep1();
         }, 1200);
