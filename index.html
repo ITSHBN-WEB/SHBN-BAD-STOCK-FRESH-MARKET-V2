@@ -182,6 +182,7 @@
     <div id="step2View" style="display:none;">
       <div class="summary-bar">
         <div class="info">
+          <span id="summaryOutlet" class="cat-tag" style="margin-right:8px;"></span>
           <b id="summaryStaff"></b> &middot; <span id="summarySupervisor"></span>
         </div>
         <div class="btn-row" style="margin-top:0;">
@@ -275,6 +276,15 @@
     </div>
 
     <div id="adminUnlockedView" style="display:none;">
+      <div class="card">
+        <h2><span class="step-badge">&#127970;</span> Outlet Settings</h2>
+        <label>Current Outlet</label>
+        <select id="adminOutletSelect"></select>
+        <button class="btn btn-full" onclick="saveOutletSetting()">Save Outlet</button>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, IT Entry, Completed, and Problem PLUs. The Masterlist itself stays shared between outlets.</p>
+        <div id="outletSettingStatus"></div>
+      </div>
+
       <div class="card">
         <h2><span class="step-badge">&#9888;</span> Problem PLUs<span class="pending-badge" id="problemPluCount">0</span></h2>
         <button class="btn ghost" style="margin-top:0;" onclick="loadProblemPlus()">Refresh</button>
@@ -457,11 +467,12 @@
   // unresolved row's own entry_date instead, since a PLU might get fixed
   // days after it was originally scanned — the same-day rule always
   // applies to the ROW's day, not "today".
-  function findBatchForDay(category, staff, supervisor, status, referenceDate){
+  function findBatchForDay(plant, category, staff, supervisor, status, referenceDate){
     var bounds = dayBoundsISO(referenceDate || new Date());
     var query = sb.from('bad_stock_fresh_market')
       .select('batch_id, plu_code, quantity, id')
       .eq('status', status)
+      .eq('plant', plant)
       .eq('staff', staff)
       .eq('supervisor', supervisor)
       .gte('entry_date', bounds.startISO)
@@ -475,8 +486,8 @@
     });
   }
 
-  function submitGroupToSupabase(category, staff, supervisor, status, groupItems){
-    return findBatchForDay(category, staff, supervisor, status, new Date())
+  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems){
+    return findBatchForDay(plant, category, staff, supervisor, status, new Date())
       .then(function(existing){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         var existingByPlu = {};
@@ -505,7 +516,7 @@
               material: item.material,
               quantity: item.qty,
               uom: item.uom,
-              plant: '1008',
+              plant: plant,
               sloc: '1000',
               reason: '2',
               status: status
@@ -522,7 +533,7 @@
       });
   }
 
-  function submitBadStockToSupabase(staff, supervisor, items){
+  function submitBadStockToSupabase(outlet, staff, supervisor, items){
     var groups = {};
     items.forEach(function(item){
       var key = item.category || '__UNRESOLVED__';
@@ -537,7 +548,7 @@
         var isUnresolved = key === '__UNRESOLVED__';
         var category = isUnresolved ? null : key;
         var status = isUnresolved ? 'unresolved' : 'pending';
-        return submitGroupToSupabase(category, staff, supervisor, status, groups[key]);
+        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key]);
       });
     }, Promise.resolve()).then(function(){
       return { count: items.length };
@@ -561,14 +572,15 @@
         var rows = res.data;
         if(!rows.length) return true;
 
-        // Group by staff + supervisor + calendar day — each group needs
-        // its own find-or-create pending batch, since different days or
-        // different staff/supervisor pairs must never share a batch.
+        // Group by plant + staff + supervisor + calendar day — each group
+        // needs its own find-or-create pending batch, since different
+        // outlets, different days, or different staff/supervisor pairs
+        // must never share a batch.
         var groups = {};
         rows.forEach(function(row){
           var day = new Date(row.entry_date);
           day.setHours(0, 0, 0, 0);
-          var groupKey = row.staff + '||' + row.supervisor + '||' + day.toISOString();
+          var groupKey = row.plant + '||' + row.staff + '||' + row.supervisor + '||' + day.toISOString();
           if(!groups[groupKey]) groups[groupKey] = [];
           groups[groupKey].push(row);
         });
@@ -579,7 +591,7 @@
             var groupRows = groups[gKey];
             var first = groupRows[0];
 
-            return findBatchForDay(category, first.staff, first.supervisor, 'pending', first.entry_date)
+            return findBatchForDay(first.plant, category, first.staff, first.supervisor, 'pending', first.entry_date)
               .then(function(existing){
                 var ops = [];
                 var totalQty = Math.round(groupRows.reduce(function(sum, r){ return sum + r.quantity; }, 0) * 100) / 100;
@@ -645,6 +657,7 @@
     return sb.from('bad_stock_fresh_market')
       .select('*')
       .eq('status', 'pending')
+      .eq('plant', currentOutletPlant)
       .order('entry_date', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -699,6 +712,7 @@
     return sb.from('bad_stock_fresh_market')
       .select('*')
       .eq('status', 'keyed_in')
+      .eq('plant', currentOutletPlant)
       .gte('entry_date', cutoff.toISOString())
       .order('entry_date', { ascending: false })
       .then(function(res){
@@ -909,6 +923,41 @@
   // added/renamed.
   var FRESH_MARKET_CATEGORIES = ['Meat & Seafood', 'Local Vege', 'Import Vege', 'Fruit', 'Frozen & Dried Food'];
 
+  // Multi-outlet support: each outlet gets its own deployment/repo of this
+  // same codebase, sharing one Supabase project and masterlist but keeping
+  // transaction data separated by plant code. DEFAULT_OUTLET_PLANT is the
+  // ONE line that needs changing when cloning this repo for another
+  // outlet (e.g. '1015' for the future 1015-SHPL repo) — everything else
+  // (defaults, batching, filtering) follows from it automatically.
+  //
+  // The outlet itself is a fixed, device-level setting (not something
+  // staff pick per transaction) — set once by Admin, persisted in
+  // localStorage, and applied to every read/write in the app: New Entry
+  // submissions, IT Entry, Completed, and Problem PLUs all scope to
+  // whichever outlet is currently set on this device. The Masterlist has
+  // no outlet field at all and always stays shared between outlets.
+  var OUTLET_OPTIONS = [
+    { plant: '1008', label: '1008-SHBN' },
+    { plant: '1015', label: '1015-SHPL' }
+  ];
+  var DEFAULT_OUTLET_PLANT = '1008';
+  var OUTLET_STORAGE_KEY = 'shbn_bad_stock_outlet_v1';
+
+  function getCurrentOutlet(){
+    try {
+      return localStorage.getItem(OUTLET_STORAGE_KEY) || DEFAULT_OUTLET_PLANT;
+    } catch (e) {
+      return DEFAULT_OUTLET_PLANT;
+    }
+  }
+
+  var currentOutletPlant = getCurrentOutlet();
+
+  function outletLabel(plant){
+    var match = OUTLET_OPTIONS.find(function(o){ return o.plant === plant; });
+    return match ? match.label : plant;
+  }
+
   function loadCategories(){
     appCategories = FRESH_MARKET_CATEGORIES; // still used for IT Entry / Admin category chips
     document.getElementById('loadingView').style.display = 'none';
@@ -1006,6 +1055,7 @@
   }
 
   function enterStep2(){
+    document.getElementById('summaryOutlet').textContent = outletLabel(currentOutletPlant);
     document.getElementById('summaryStaff').textContent = sessionStaff;
     document.getElementById('summarySupervisor').textContent = sessionSupervisor;
 
@@ -1275,7 +1325,7 @@
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
     document.getElementById('submitBtn').disabled = true;
 
-    submitBadStockToSupabase(sessionStaff, sessionSupervisor, cart)
+    submitBadStockToSupabase(currentOutletPlant, sessionStaff, sessionSupervisor, cart)
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok">' + res.count + ' item(s) submitted successfully.</div>';
         cart = [];
@@ -2130,6 +2180,7 @@
           adminUnlocked = true;
           document.getElementById('adminLockView').style.display = 'none';
           document.getElementById('adminUnlockedView').style.display = 'block';
+          populateAdminOutletDropdown();
           populateAdminCategoryDropdown();
           loadProblemPlus();
           loadAdminPendingList();
@@ -2140,6 +2191,56 @@
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
       });
+  }
+
+  function populateAdminOutletDropdown(){
+    var select = document.getElementById('adminOutletSelect');
+    select.innerHTML = '';
+    OUTLET_OPTIONS.forEach(function(o){
+      var opt = document.createElement('option');
+      opt.value = o.plant; opt.textContent = o.label;
+      select.appendChild(opt);
+    });
+    select.value = currentOutletPlant;
+  }
+
+  function saveOutletSetting(){
+    var selected = document.getElementById('adminOutletSelect').value;
+    var statusEl = document.getElementById('outletSettingStatus');
+
+    if(selected === currentOutletPlant){
+      statusEl.innerHTML = '<div class="status ok">Already set to ' + escapeHtml(outletLabel(selected)) + '.</div>';
+      return;
+    }
+
+    var ok = confirm(
+      'Switch this device to ' + outletLabel(selected) + '?\n\n' +
+      'New Entry, IT Entry, Completed, and Problem PLUs will all switch to ' +
+      'showing that outlet\'s data. The Masterlist stays shared either way.'
+    );
+    if(!ok){
+      document.getElementById('adminOutletSelect').value = currentOutletPlant; // revert the dropdown
+      return;
+    }
+
+    try {
+      localStorage.setItem(OUTLET_STORAGE_KEY, selected);
+    } catch (e) { /* storage unavailable — still applies for this page load */ }
+
+    currentOutletPlant = selected;
+    statusEl.innerHTML = '<div class="status ok">Outlet set to ' + escapeHtml(outletLabel(selected)) + '.</div>';
+
+    // Clear cached pending/completed data so the next visit to IT Entry
+    // re-fetches under the new outlet, rather than showing stale rows
+    // from whichever outlet was active before.
+    pendingEntries = [];
+    completedEntries = [];
+    pendingDraft = {};
+    selectedPendingCategory = null;
+    selectedCompletedCategory = null;
+
+    loadProblemPlus();
+    loadAdminPendingList();
   }
 
   function populateAdminCategoryDropdown(){
@@ -2202,7 +2303,7 @@
     document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('problemPluEmpty').style.display = 'none';
 
-    sb.from('bad_stock_fresh_market').select('plu_code, quantity').eq('status', 'unresolved')
+    sb.from('bad_stock_fresh_market').select('plu_code, quantity').eq('status', 'unresolved').eq('plant', currentOutletPlant)
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
         var grouped = {};
