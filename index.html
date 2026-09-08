@@ -489,7 +489,7 @@
     });
   }
 
-  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems){
+  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems, submissionId){
     return findBatchForDay(plant, category, staff, supervisor, status, new Date())
       .then(function(existing){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
@@ -506,7 +506,10 @@
           var existingRow = existingByPlu[String(item.plu).trim()];
           if(existingRow){
             var newQty = Math.round((existingRow.quantity + item.qty) * 100) / 100;
-            ops.push(sb.from('bad_stock_fresh_market').update({ quantity: newQty }).eq('id', existingRow.id));
+            // submission_id updates to this newest contributing submission
+            // — used later to trace "does this row's most recent
+            // submission still have an unresolved sibling item elsewhere".
+            ops.push(sb.from('bad_stock_fresh_market').update({ quantity: newQty, submission_id: submissionId }).eq('id', existingRow.id));
           } else {
             newRows.push({
               batch_id: batchId,
@@ -522,7 +525,8 @@
               plant: plant,
               sloc: '1000',
               reason: '2',
-              status: status
+              status: status,
+              submission_id: submissionId
             });
           }
         });
@@ -537,6 +541,13 @@
   }
 
   function submitBadStockToSupabase(outlet, staff, supervisor, items){
+    // One submissionId per New Entry submit click, shared across every
+    // category batch (and the unresolved batch) that this cart's items
+    // split into — this is what lets printBatch() later trace "is this
+    // batch's originating submission still incomplete elsewhere" and
+    // block printing until every sibling item is resolved.
+    var submissionId = 'S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+
     var groups = {};
     items.forEach(function(item){
       var key = item.category || '__UNRESOLVED__';
@@ -551,7 +562,7 @@
         var isUnresolved = key === '__UNRESOLVED__';
         var category = isUnresolved ? null : key;
         var status = isUnresolved ? 'unresolved' : 'pending';
-        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key]);
+        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key], submissionId);
       });
     }, Promise.resolve()).then(function(){
       return { count: items.length };
@@ -692,7 +703,8 @@
             description: row.description || (masterMatch ? masterMatch.description : ''),
             material: row.material || (masterMatch ? masterMatch.material : ''),
             uom: row.uom || (masterMatch ? masterMatch.uom : ''),
-            qty: row.quantity
+            qty: row.quantity,
+            submissionId: row.submission_id
           });
         });
 
@@ -744,7 +756,8 @@
             description: row.description,
             material: row.material,
             uom: row.uom,
-            qty: row.quantity
+            qty: row.quantity,
+            submissionId: row.submission_id
           });
         });
 
@@ -874,7 +887,7 @@
             materialDocument: materialDocument,
             keyInBy: keyInBy,
             items: rows.map(function(r){
-              return { plu: r.plu_code, description: r.description, material: r.material, uom: r.uom, qty: r.quantity };
+              return { plu: r.plu_code, description: r.description, material: r.material, uom: r.uom, qty: r.quantity, submissionId: r.submission_id };
             })
           }
         };
@@ -1992,6 +2005,33 @@
       });
   }
 
+  // ---------- Cross-batch print gate: unresolved siblings ----------
+  // A single New Entry submission can split into several batches (one per
+  // category, plus a separate "unresolved" one for unmatched PLUs) that
+  // all share the same submission_id. A category batch on its own can be
+  // fully matched and otherwise printable, but if the SAME original
+  // submission still has a sibling item stuck unresolved elsewhere, this
+  // blocks printing the whole submission until every item — including the
+  // unresolved one(s) — has been resolved via Problem PLUs.
+  function submissionHasUnresolvedSiblings(items){
+    var submissionIds = [];
+    (items || []).forEach(function(it){
+      if(it.submissionId && submissionIds.indexOf(it.submissionId) === -1) submissionIds.push(it.submissionId);
+    });
+    // Rows created before this feature existed have no submission_id —
+    // nothing to trace, so don't block those.
+    if(!submissionIds.length) return Promise.resolve(false);
+
+    return sb.from('bad_stock_fresh_market')
+      .select('id')
+      .eq('status', 'unresolved')
+      .in('submission_id', submissionIds)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return res.data.length > 0;
+      });
+  }
+
   function printBatch(key){
     var draft = pendingDraft[key];
     if(!draft) return;
@@ -2008,26 +2048,39 @@
       return;
     }
 
-    if(draft.submitted){
-      openPrintView(draft.submitted);
-      return;
-    }
+    submissionHasUnresolvedSiblings(itemsToCheck)
+      .then(function(blocked){
+        if(blocked){
+          alert('This submission still has a Problem PLU pending in another category. Resolve it under IT Entry \u2192 Problem PLUs before printing.');
+          return;
+        }
 
-    // Not submitted yet — print with whatever's currently in this card,
-    // leaving Material Document / Key In By blank for hand-writing.
-    var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
-                adminPendingEntries.find(function(b){ return pendingKey(b) === key; });
-    if(!batch) return;
-    openPrintView({
-      date: batch.dateDisplay,
-      time: '',
-      category: batch.category,
-      staff: batch.staff,
-      supervisor: batch.supervisor,
-      materialDocument: draft.materialDocument || '',
-      keyInBy: draft.keyInBy || '',
-      items: draft.items
-    });
+        if(draft.submitted){
+          openPrintView(draft.submitted);
+          return;
+        }
+
+        // Not submitted yet — print with whatever's currently in this
+        // card, leaving Material Document / Key In By blank for
+        // hand-writing.
+        var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+                    adminPendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+                    completedEntries.find(function(b){ return pendingKey(b) === key; });
+        if(!batch) return;
+        openPrintView({
+          date: batch.dateDisplay,
+          time: '',
+          category: batch.category,
+          staff: batch.staff,
+          supervisor: batch.supervisor,
+          materialDocument: draft.materialDocument || '',
+          keyInBy: draft.keyInBy || '',
+          items: draft.items
+        });
+      })
+      .catch(function(err){
+        alert('Could not verify this submission is fully resolved: ' + err.message);
+      });
   }
 
   function openPrintView(p){
@@ -2122,24 +2175,41 @@
     var btn = document.getElementById('sendPrintBtn_' + safeKey);
     var statusEl = document.getElementById('sendPrintStatus_' + safeKey);
 
+    var itemsToCheck = draft.submitted ? draft.submitted.items : draft.items;
+    if(itemsToCheck.some(function(it){ return !it.description; })){
+      alert('Some data is not in the masterlist. Please check.');
+      return;
+    }
+
     if(btn) btn.disabled = true;
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
 
-    // If this batch hasn't been submitted yet, save its current items to
-    // Supabase first — Print Station reads straight from
-    // bad_stock_fresh_market, so an unsaved edit here would otherwise
-    // print stale data. Already-completed batches skip straight to queuing.
-    var ensureSaved = draft.submitted
-      ? Promise.resolve()
-      : (statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving changes...</div>', persistPendingDraft(key));
+    submissionHasUnresolvedSiblings(itemsToCheck)
+      .then(function(blocked){
+        if(blocked){
+          statusEl.innerHTML = '<div class="status err">This submission still has a Problem PLU pending in another category. Resolve it under IT Entry \u2192 Problem PLUs before printing.</div>';
+          if(btn) btn.disabled = false;
+          return;
+        }
 
-    ensureSaved
-      .then(function(){
-        statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Sending...</div>';
-        return requestPrintToSupabase(batch.txnId);
-      })
-      .then(function(res){
-        statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Waiting for Print Station...</div>';
-        pollPrintRequest(res.requestId, safeKey, btn, statusEl);
+        // If this batch hasn't been submitted yet, save its current items
+        // to Supabase first — Print Station reads straight from
+        // bad_stock_fresh_market, so an unsaved edit here would otherwise
+        // print stale data. Already-completed batches skip straight to
+        // queuing.
+        var ensureSaved = draft.submitted
+          ? Promise.resolve()
+          : (statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving changes...</div>', persistPendingDraft(key));
+
+        return ensureSaved
+          .then(function(){
+            statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Sending...</div>';
+            return requestPrintToSupabase(batch.txnId);
+          })
+          .then(function(res){
+            statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Waiting for Print Station...</div>';
+            pollPrintRequest(res.requestId, safeKey, btn, statusEl);
+          });
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
