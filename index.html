@@ -226,6 +226,7 @@
       <nav class="tabs" style="margin-bottom:14px;">
         <button id="itSubTabPending" class="active" onclick="switchItSubView('pending')">Pending</button>
         <button id="itSubTabCompleted" onclick="switchItSubView('completed')">Completed</button>
+        <button id="itSubTabProblem" onclick="switchItSubView('problem')">Problem PLUs</button>
       </nav>
       <div id="itSubViewHeaderPending">
         <h2><span class="step-badge">&#9679;</span> Pending Entries<span class="pending-badge" id="pendingCount">0</span></h2>
@@ -234,6 +235,11 @@
       <div id="itSubViewHeaderCompleted" style="display:none;">
         <h2><span class="step-badge">&#10003;</span> Completed Entries<span class="pending-badge" id="completedCount">0</span></h2>
         <button class="btn ghost" style="margin-top:0;" onclick="loadCompletedEntries()">Refresh</button>
+      </div>
+      <div id="itSubViewHeaderProblem" style="display:none;">
+        <h2><span class="step-badge">&#9888;</span> Problem PLUs<span class="pending-badge" id="problemPluCount">0</span></h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="loadProblemPlus()">Refresh</button>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">PLU codes scanned but not yet in the Masterlist. Fixing one here automatically moves every pending entry using that code into its correct category — only then does it become printable, under Pending.</p>
       </div>
     </div>
 
@@ -263,6 +269,11 @@
       <div id="completedEmpty" class="empty" style="display:none;">No completed entries in this range.</div>
       <div id="completedList"></div>
     </div>
+
+    <div id="problemSubView" style="display:none;">
+      <div id="problemPluEmpty" class="empty" style="display:none;">No problem PLUs right now.</div>
+      <div id="problemPluList"></div>
+    </div>
   </div>
 
   <!-- ============ ADMIN TAB ============ -->
@@ -284,14 +295,6 @@
         <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, IT Entry, Completed, and Problem PLUs. The Masterlist itself stays shared between outlets.</p>
         <div id="outletSettingStatus"></div>
       </div>
-
-      <div class="card">
-        <h2><span class="step-badge">&#9888;</span> Problem PLUs<span class="pending-badge" id="problemPluCount">0</span></h2>
-        <button class="btn ghost" style="margin-top:0;" onclick="loadProblemPlus()">Refresh</button>
-        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">PLU codes scanned but not yet in the Masterlist. Fixing one here automatically moves every pending entry using that code into its correct category.</p>
-      </div>
-      <div id="problemPluEmpty" class="empty" style="display:none;">No problem PLUs right now.</div>
-      <div id="problemPluList"></div>
 
       <div class="card">
         <h2><span class="step-badge">+</span> Add / Update Masterlist Item</h2>
@@ -555,7 +558,7 @@
     });
   }
 
-  // ---------- Supabase: resolveProblemPlu (Admin: Problem PLUs) ----------
+  // ---------- Supabase: resolveProblemPlu (IT Entry: Problem PLUs) ----------
   // Fixing an unresolved PLU means every bad_stock_fresh_market row that
   // used it needs to move OUT of its category-less "unresolved" bucket
   // and INTO the correct real-category pending batch — following the same
@@ -1482,14 +1485,19 @@
     itEntrySubView = view;
     document.getElementById('pendingSubView').style.display = view === 'pending' ? 'block' : 'none';
     document.getElementById('completedSubView').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('problemSubView').style.display = view === 'problem' ? 'block' : 'none';
     document.getElementById('itSubViewHeaderPending').style.display = view === 'pending' ? 'block' : 'none';
     document.getElementById('itSubViewHeaderCompleted').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('itSubViewHeaderProblem').style.display = view === 'problem' ? 'block' : 'none';
     document.getElementById('itSubTabPending').classList.toggle('active', view === 'pending');
     document.getElementById('itSubTabCompleted').classList.toggle('active', view === 'completed');
+    document.getElementById('itSubTabProblem').classList.toggle('active', view === 'problem');
 
     if(view === 'completed'){
       renderCompletedDaysPicker();
       loadCompletedEntries();
+    } else if(view === 'problem'){
+      loadProblemPlus();
     }
   }
 
@@ -2182,7 +2190,6 @@
           document.getElementById('adminUnlockedView').style.display = 'block';
           populateAdminOutletDropdown();
           populateAdminCategoryDropdown();
-          loadProblemPlus();
           loadAdminPendingList();
         } else {
           statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
@@ -2292,7 +2299,7 @@
       });
   }
 
-  // ---------- Admin: Problem PLUs ----------
+  // ---------- IT Entry: Problem PLUs ----------
   // Distinct list of unresolved PLU codes (deduplicated across every batch/
   // transaction that hit them) — fixing one here resolves every occurrence
   // at once via resolveProblemPlu().
