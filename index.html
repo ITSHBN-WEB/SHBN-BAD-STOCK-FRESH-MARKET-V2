@@ -2433,6 +2433,8 @@
           return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
         }).join('');
         html +=
+          '<label>PLU Code</label>' +
+          '<input type="text" id="ppPlu_' + safePlu + '" value="' + escapeHtml(p.plu) + '">' +
           '<label>Description</label>' +
           '<input type="text" id="ppDesc_' + safePlu + '" placeholder="e.g. FRESH WHOLE CHICKEN">' +
           '<label>Material Code</label>' +
@@ -2442,6 +2444,7 @@
           '<label>Category</label>' +
           '<select id="ppCategory_' + safePlu + '"><option value="">Select category...</option>' + catOptions + '</select>' +
           '<button class="btn btn-full" onclick="saveProblemPlu(\'' + p.plu + '\')">Save to Masterlist</button>' +
+          '<button class="btn danger btn-full" onclick="deleteProblemPlu(\'' + p.plu + '\')">Delete</button>' +
           '<div id="ppStatus_' + safePlu + '"></div>';
       }
 
@@ -2455,14 +2458,19 @@
     renderProblemPlus();
   }
 
-  function saveProblemPlu(plu){
-    var safePlu = plu.replace(/[^a-zA-Z0-9]/g,'_');
+  function saveProblemPlu(originalPlu){
+    var safePlu = originalPlu.replace(/[^a-zA-Z0-9]/g,'_');
+    var newPlu = document.getElementById('ppPlu_' + safePlu).value.trim();
     var description = document.getElementById('ppDesc_' + safePlu).value.trim();
     var material = document.getElementById('ppMaterial_' + safePlu).value.trim();
     var uom = document.getElementById('ppUom_' + safePlu).value.trim();
     var category = document.getElementById('ppCategory_' + safePlu).value;
     var statusEl = document.getElementById('ppStatus_' + safePlu);
 
+    if(!newPlu){
+      statusEl.innerHTML = '<div class="status err">PLU Code is required.</div>';
+      return;
+    }
     if(!description || !category){
       statusEl.innerHTML = '<div class="status err">Description and Category are required.</div>';
       return;
@@ -2470,7 +2478,18 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
 
-    resolveProblemPlu(plu, description, material, uom, category)
+    // If the PLU code itself was corrected (e.g. a scan typo), rename it
+    // across every unresolved row using the old code first — matches how
+    // resolving already applies everywhere, since Masterlist is shared.
+    var renameStep = (newPlu !== originalPlu)
+      ? sb.from('bad_stock_fresh_market').update({ plu_code: newPlu }).eq('plu_code', originalPlu).eq('status', 'unresolved')
+          .then(function(res){ if(res.error) throw new Error(res.error.message); })
+      : Promise.resolve();
+
+    renameStep
+      .then(function(){
+        return resolveProblemPlu(newPlu, description, material, uom, category);
+      })
       .then(function(){
         return getMasterlistFromSupabase();
       })
@@ -2480,6 +2499,37 @@
         list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
         problemPluEditing = null;
         loadProblemPlus(); // resolved PLU should now disappear from the list
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+      });
+  }
+
+  // Deletes this outlet's unresolved rows for a Problem PLU outright —
+  // for entries that shouldn't have been logged at all, rather than ones
+  // that need a masterlist fix. Scoped to the CURRENT outlet only (unlike
+  // resolving, which intentionally applies everywhere since the masterlist
+  // is shared) — deletion is destructive, so it only removes what's
+  // actually shown on screen, never another outlet's data.
+  function deleteProblemPlu(plu){
+    var safePlu = plu.replace(/[^a-zA-Z0-9]/g,'_');
+    var statusEl = document.getElementById('ppStatus_' + safePlu);
+    var p = problemPlus.find(function(x){ return x.plu === plu; });
+
+    var ok = confirm(
+      'Delete PLU ' + plu + '?\n\n' +
+      (p ? p.count + ' unresolved entr' + (p.count === 1 ? 'y' : 'ies') + ', ' + p.totalQty + ' total qty' : 'These entries') +
+      ' for this outlet will be permanently removed. This cannot be undone.'
+    );
+    if(!ok) return;
+
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
+
+    sb.from('bad_stock_fresh_market').delete().eq('plu_code', plu).eq('status', 'unresolved').eq('plant', currentOutletPlant)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        problemPluEditing = null;
+        loadProblemPlus();
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
