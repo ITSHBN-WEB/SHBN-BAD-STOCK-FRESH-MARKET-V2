@@ -794,6 +794,15 @@
         .eq('id', it.id);
     });
 
+    // New items added via IT Entry's "Add PLU" split the same way New
+    // Entry's submit does: matched items belong in THIS batch; unmatched
+    // ones must never land here with a borrowed category/status — they
+    // get routed to the outlet's unresolved bucket via the same
+    // find-or-create-by-day logic New Entry uses, then removed from this
+    // batch's local item list entirely once that succeeds.
+    var newMatchedItems = items.filter(function(it){ return it.isNew && !it.unmatched; });
+    var newUnmatchedItems = items.filter(function(it){ return it.isNew && it.unmatched; });
+
     // Keep a reference to the actual new item objects (not just plain
     // insert payloads) so that once Supabase assigns them real row ids,
     // we can write those ids back onto the same objects living in
@@ -803,8 +812,7 @@
     // new one (isNew already cleared), and its real Supabase row would
     // get swept into the delete step below since nothing on the client
     // still pointed at it.
-    var newItems = items.filter(function(it){ return it.isNew; });
-    var newRows = newItems.map(function(it){
+    var newRows = newMatchedItems.map(function(it){
       return {
         batch_id: txnId,
         entry_date: new Date().toISOString(),
@@ -816,7 +824,7 @@
         material: it.material,
         quantity: it.qty,
         uom: it.uom,
-        plant: '1008',
+        plant: currentOutletPlant,
         sloc: '1000',
         reason: '2',
         status: 'pending'
@@ -835,8 +843,8 @@
               .then(function(insertRes){
                 if(insertRes.error) throw new Error(insertRes.error.message);
                 insertRes.data.forEach(function(row, idx){
-                  newItems[idx].id = row.id;
-                  newItems[idx].isNew = false;
+                  newMatchedItems[idx].id = row.id;
+                  newMatchedItems[idx].isNew = false;
                 });
                 return insertRes;
               })
@@ -848,7 +856,19 @@
       })
       .then(function(results){
         results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
-        return true;
+
+        if(!newUnmatchedItems.length) return true;
+
+        var submissionId = 'S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        return submitGroupToSupabase(currentOutletPlant, null, batchInfo.staff, batchInfo.supervisor, 'unresolved', newUnmatchedItems, submissionId)
+          .then(function(){
+            // Routed away successfully — these no longer belong in this
+            // batch's local item list at all.
+            for(var i = items.length - 1; i >= 0; i--){
+              if(items[i].isNew && items[i].unmatched) items.splice(i, 1);
+            }
+            return true;
+          });
       });
   }
 
@@ -1409,6 +1429,7 @@
               keyInBy: '',
               pluInput: '',
               qtyInput: '',
+              pendingAddDescription: '', // required description for an unmatched PLU added via "Add PLU"
               submitted: null // holds printData once submitted
             };
           } else {
@@ -1686,8 +1707,11 @@
       }
 
       var itemsHtml = draft.items.map(function(item, idx){
-        var descDisplay = item.description ? escapeHtml(item.description) : '<span style="color:var(--danger);">(Not in Masterlist)</span>';
-        return '<tr>' +
+        var descDisplay = item.unmatched
+          ? escapeHtml(item.description) + ' <span style="color:var(--danger);font-size:11px;">(Not in Masterlist)</span>'
+          : (item.description ? escapeHtml(item.description) : '<span style="color:var(--danger);">(Not in Masterlist)</span>');
+        var rowStyle = item.unmatched ? ' style="background:var(--danger-soft);"' : '';
+        return '<tr' + rowStyle + '>' +
           '<td>' + descDisplay + '</td>' +
           '<td>' + escapeHtml(item.plu) + '</td>' +
           '<td>' + escapeHtml(item.uom || '\u2014') + '</td>' +
@@ -1770,6 +1794,7 @@
     document.querySelectorAll('.pending-plu-input').forEach(function(input){
       input.addEventListener('input', function(){
         pendingDraft[input.dataset.key].pluInput = input.value;
+        pendingDraft[input.dataset.key].pendingAddDescription = ''; // new PLU typed — any earlier description no longer applies
         renderPendingAddPreview(input.dataset.key);
       });
     });
@@ -1915,8 +1940,18 @@
         '<div class="row"><span>UOM</span><b>' + escapeHtml(match.uom) + '</b></div>' +
         '</div>';
     } else {
+      var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
       previewEl.innerHTML =
-        '<div class="lookup-preview notfound">PLU "' + escapeHtml(plu) + '" was not found in the Masterlist. It can still be added, but will be flagged red until an admin adds it.</div>';
+        '<div class="lookup-preview notfound">' +
+        'PLU "' + escapeHtml(plu) + '" was not found in the Masterlist. Please describe the item before adding it — admin can refine the details later in Problem PLUs.' +
+        '<label style="margin-top:10px;">Description <span style="color:var(--danger);">*</span></label>' +
+        '<input type="text" id="pendingUnmatchedDesc_' + safeKey + '" value="' + escapeHtml(draft.pendingAddDescription || '') + '" placeholder="Describe this item">' +
+        '</div>';
+
+      var descInput = document.getElementById('pendingUnmatchedDesc_' + safeKey);
+      descInput.addEventListener('input', function(){
+        pendingDraft[key].pendingAddDescription = descInput.value.trim();
+      });
     }
   }
 
@@ -1932,6 +1967,13 @@
     qty = roundQty(qty); // accepts up to 3 decimals typed, stores only 2
 
     var match = masterlistByPlu[plu];
+    var description = match ? match.description : (draft.pendingAddDescription || '').trim();
+
+    if(!match && !description){
+      statusEl.innerHTML = '<div class="status err">Please enter a description for this PLU before adding it.</div>';
+      return;
+    }
+
     var already = draft.items.find(function(i){ return i.plu === plu; });
     if(already){
       // Duplicate PLU: quantities add up, rounded back to 2 decimals — not
@@ -1940,16 +1982,18 @@
     } else {
       draft.items.push({
         plu: plu,
-        description: match ? match.description : '',
+        description: description,
         material: match ? match.material : '',
         uom: match ? match.uom : '',
         qty: qty,
-        isNew: true
+        isNew: true,
+        unmatched: !match
       });
     }
 
     draft.pluInput = '';
     draft.qtyInput = '';
+    draft.pendingAddDescription = '';
     statusEl.innerHTML = '';
     renderPendingListFiltered();
   }
@@ -1984,8 +2028,12 @@
 
     persistPendingDraft(key)
       .then(function(){
-        statusEl.innerHTML = '<div class="status ok">Changes saved.</div>';
-        setTimeout(function(){ statusEl.innerHTML = ''; }, 1500);
+        renderPendingListFiltered(); // reflects any item routed away to Problem PLUs
+        var freshStatusEl = document.getElementById('pendingSaveStatus_' + safeKey);
+        if(freshStatusEl){
+          freshStatusEl.innerHTML = '<div class="status ok">Changes saved.</div>';
+          setTimeout(function(){ freshStatusEl.innerHTML = ''; }, 1500);
+        }
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
