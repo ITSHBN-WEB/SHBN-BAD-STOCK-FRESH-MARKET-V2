@@ -2326,26 +2326,25 @@
 
   // ================= ADMIN =================
 
+  // Checked client-side rather than via Apps Script — this was the last
+  // thing still depending on that legacy backend, and this gate is a
+  // simple deterrent, not real security, either way.
+  var ADMIN_PASSWORD = '8888';
+
   function unlockAdmin(){
     var pw = document.getElementById('adminPasswordInput').value;
     var statusEl = document.getElementById('adminLockStatus');
 
-    apiPost('checkAdminPassword', { password: pw })
-      .then(function(ok){
-        if(ok){
-          adminUnlocked = true;
-          document.getElementById('adminLockView').style.display = 'none';
-          document.getElementById('adminUnlockedView').style.display = 'block';
-          populateAdminOutletDropdown();
-          populateAdminCategoryDropdown();
-          loadAdminPendingList();
-        } else {
-          statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
-        }
-      })
-      .catch(function(err){
-        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
-      });
+    if(pw === ADMIN_PASSWORD){
+      adminUnlocked = true;
+      document.getElementById('adminLockView').style.display = 'none';
+      document.getElementById('adminUnlockedView').style.display = 'block';
+      populateAdminOutletDropdown();
+      populateAdminCategoryDropdown();
+      loadAdminPendingList();
+    } else {
+      statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
+    }
   }
 
   function populateAdminOutletDropdown(){
