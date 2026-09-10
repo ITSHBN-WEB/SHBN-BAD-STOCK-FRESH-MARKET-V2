@@ -1211,13 +1211,10 @@
       descInput.addEventListener('input', function(){
         var val = descInput.value.trim();
         currentLookup.description = val;
-        var wasHidden = qtySection.style.display !== 'block';
         qtySection.style.display = val ? 'block' : 'none';
-        // Only jump focus to Quantity the moment it first appears (empty
-        // -> non-empty), not on every subsequent keystroke — otherwise
-        // typing a second character steals focus right back out of this
-        // field.
-        if(val && wasHidden) document.getElementById('qtyInput').focus();
+        // No auto-focus here — jumping focus away from this field mid-word
+        // interrupts typing. Quantity simply becomes visible/available
+        // once there's a description; staff moves to it themselves.
       });
     }
   }
