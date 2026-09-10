@@ -859,7 +859,20 @@
 
         if(!newUnmatchedItems.length) return true;
 
-        var submissionId = 'S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        // Reuse this batch's own submission_id (from an existing row)
+        // rather than generating an unrelated new one — this is what lets
+        // the print gate later recognize "this batch still has a sibling
+        // item stuck unresolved" for an item added mid-way via IT Entry's
+        // Add PLU, not just ones split apart at the original New Entry
+        // submission. Falls back to a fresh id only for legacy batches
+        // that predate submission_id existing at all (nothing to link to
+        // in that case anyway).
+        var existingSubmissionId = null;
+        items.some(function(it){
+          if(it.id && it.submissionId){ existingSubmissionId = it.submissionId; return true; }
+          return false;
+        });
+        var submissionId = existingSubmissionId || ('S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         return submitGroupToSupabase(currentOutletPlant, null, batchInfo.staff, batchInfo.supervisor, 'unresolved', newUnmatchedItems, submissionId)
           .then(function(){
             // Routed away successfully — these no longer belong in this
