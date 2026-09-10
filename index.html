@@ -1195,14 +1195,25 @@
     } else {
       // No category available for an unmatched item — it goes into a
       // separate "unresolved" batch at submit time until an admin adds it
-      // to the masterlist with a category via Problem PLUs.
+      // to the masterlist with a category via Problem PLUs. A description
+      // is required up front so Problem PLUs never starts from a blank
+      // field — staff describes what they scanned, admin can refine it.
       currentLookup = { plu: plu, description: '', material: '', uom: '', category: null, unmatched: true };
       previewEl.innerHTML =
         '<div class="lookup-preview notfound">' +
-        'This PLU isn\'t in the Masterlist yet. It will still be submitted, but flagged red for admin review until it\'s added.' +
+        'This PLU isn\'t in the Masterlist yet. Please describe the item before adding it — admin can refine the details later in Problem PLUs.' +
+        '<label style="margin-top:10px;">Description <span style="color:var(--danger);">*</span></label>' +
+        '<input type="text" id="unmatchedDescInput" placeholder="Describe this item">' +
         '</div>';
-      qtySection.style.display = 'block';
-      document.getElementById('qtyInput').focus();
+      qtySection.style.display = 'none';
+
+      var descInput = document.getElementById('unmatchedDescInput');
+      descInput.addEventListener('input', function(){
+        var val = descInput.value.trim();
+        currentLookup.description = val;
+        qtySection.style.display = val ? 'block' : 'none';
+        if(val) document.getElementById('qtyInput').focus();
+      });
     }
   }
 
@@ -1226,6 +1237,10 @@
 
   function addToCart(){
     if(!currentLookup) return;
+    if(currentLookup.unmatched && !currentLookup.description){
+      alert('Please enter a description for this PLU before adding it.');
+      return;
+    }
     var qty = parseFloat(document.getElementById('qtyInput').value);
     if(!qty || qty <= 0){
       alert('Please enter a valid quantity.');
@@ -2380,15 +2395,19 @@
     document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('problemPluEmpty').style.display = 'none';
 
-    sb.from('bad_stock_fresh_market').select('plu_code, quantity').eq('status', 'unresolved').eq('plant', currentOutletPlant)
+    sb.from('bad_stock_fresh_market').select('plu_code, quantity, description').eq('status', 'unresolved').eq('plant', currentOutletPlant)
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
         var grouped = {};
         res.data.forEach(function(row){
           var key = String(row.plu_code).trim();
-          if(!grouped[key]) grouped[key] = { plu: key, count: 0, totalQty: 0 };
+          if(!grouped[key]) grouped[key] = { plu: key, count: 0, totalQty: 0, description: '' };
           grouped[key].count++;
           grouped[key].totalQty += row.quantity;
+          // Carry through whatever description staff typed at New Entry
+          // (if any) so Problem PLUs never starts from a blank field —
+          // first non-empty one found wins.
+          if(!grouped[key].description && row.description) grouped[key].description = row.description;
         });
         problemPlus = Object.keys(grouped).map(function(k){
           var p = grouped[k];
@@ -2436,7 +2455,7 @@
           '<label>PLU Code</label>' +
           '<input type="text" id="ppPlu_' + safePlu + '" value="' + escapeHtml(p.plu) + '">' +
           '<label>Description</label>' +
-          '<input type="text" id="ppDesc_' + safePlu + '" placeholder="e.g. FRESH WHOLE CHICKEN">' +
+          '<input type="text" id="ppDesc_' + safePlu + '" value="' + escapeHtml(p.description || '') + '" placeholder="e.g. FRESH WHOLE CHICKEN">' +
           '<label>Material Code</label>' +
           '<input type="text" id="ppMaterial_' + safePlu + '" placeholder="e.g. 10089824">' +
           '<label>UOM</label>' +
