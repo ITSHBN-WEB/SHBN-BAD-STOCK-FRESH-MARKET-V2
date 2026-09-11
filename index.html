@@ -2626,6 +2626,11 @@
   var masterlistSearchResult = null;
   var masterlistEditMode = false;
   var masterlistConfirmMode = false;
+  // Captured right before switching into confirm mode, since re-rendering
+  // for that step was previously regenerating the input fields straight
+  // from the ORIGINAL loaded record — silently discarding whatever the
+  // admin had just typed, so Save Changes would re-save the unedited data.
+  var masterlistEditValues = null;
 
   function searchMasterlistItem(){
     var plu = document.getElementById('masterlistSearchInput').value.trim();
@@ -2667,6 +2672,10 @@
     if(!masterlistSearchResult) return;
 
     var r = masterlistSearchResult;
+    // Use whatever the admin has typed so far (captured right before
+    // showing the confirm step) rather than the original loaded record,
+    // so re-rendering into confirm mode never discards in-progress edits.
+    var vals = masterlistEditValues || { plu_code: r.plu_code, description: r.description, material: r.material, uom: r.uom, category: r.category };
     var card = document.createElement('div');
     card.className = 'card';
 
@@ -2686,21 +2695,26 @@
         '</div>';
     } else {
       var catOptions = appCategories.map(function(c){
-        return '<option value="' + escapeHtml(c) + '"' + (c === r.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+        return '<option value="' + escapeHtml(c) + '"' + (c === vals.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
       }).join('');
 
       html +=
-        '<label>Description</label><input type="text" id="meDesc" value="' + escapeHtml(r.description) + '">' +
-        '<label>Material Code</label><input type="text" id="meMaterial" value="' + escapeHtml(r.material) + '">' +
-        '<label>UOM</label><input type="text" id="meUom" value="' + escapeHtml(r.uom) + '">' +
-        '<label>Category</label><select id="meCategory"><option value="">Select category...</option>' + catOptions + '</select>';
+        '<label>PLU Code</label><input type="text" id="mePlu" value="' + escapeHtml(vals.plu_code) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
+        '<label>Description</label><input type="text" id="meDesc" value="' + escapeHtml(vals.description) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
+        '<label>Material Code</label><input type="text" id="meMaterial" value="' + escapeHtml(vals.material) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
+        '<label>UOM</label><input type="text" id="meUom" value="' + escapeHtml(vals.uom) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
+        '<label>Category</label><select id="meCategory"' + (masterlistConfirmMode ? ' disabled' : '') + '><option value="">Select category...</option>' + catOptions + '</select>';
 
       if(!masterlistConfirmMode){
         html += '<button class="btn btn-full" onclick="requestMasterlistSave()">Save Changes</button>';
       } else {
+        var pluChanged = vals.plu_code !== r.plu_code;
         html +=
           '<div class="lookup-preview notfound" style="margin-top:14px;">' +
-            'This will overwrite the existing Masterlist entry for PLU ' + escapeHtml(r.plu_code) + '. Type <b>CONFIRM</b> below to proceed.' +
+            (pluChanged
+              ? 'This will rename PLU ' + escapeHtml(r.plu_code) + ' to ' + escapeHtml(vals.plu_code) + ' and update its details. '
+              : 'This will overwrite the existing Masterlist entry for PLU ' + escapeHtml(r.plu_code) + '. ') +
+            'Type <b>CONFIRM</b> below to proceed.' +
             '<input type="text" id="meConfirmInput" placeholder="Type CONFIRM" style="margin-top:10px;">' +
             '<div class="btn-row">' +
               '<button class="btn ghost" onclick="cancelMasterlistConfirm()">Cancel</button>' +
@@ -2719,17 +2733,24 @@
   function toggleMasterlistEdit(){
     masterlistEditMode = true;
     masterlistConfirmMode = false;
+    masterlistEditValues = null; // fresh edit session starts from the original loaded record
     renderMasterlistSearchResult();
   }
 
   function requestMasterlistSave(){
+    var newPlu = document.getElementById('mePlu').value.trim();
     var description = document.getElementById('meDesc').value.trim();
+    var material = document.getElementById('meMaterial').value.trim();
+    var uom = document.getElementById('meUom').value.trim();
     var category = document.getElementById('meCategory').value;
-    if(!description || !category){
+    if(!newPlu || !description || !category){
       document.getElementById('masterlistEditStatus').innerHTML =
-        '<div class="status err">Description and Category are required.</div>';
+        '<div class="status err">PLU Code, Description, and Category are required.</div>';
       return;
     }
+    // Captured now, before switching into confirm mode, so the re-render
+    // for that step shows exactly what was just typed.
+    masterlistEditValues = { plu_code: newPlu, description: description, material: material, uom: uom, category: category };
     masterlistConfirmMode = true;
     renderMasterlistSearchResult();
   }
@@ -2747,17 +2768,37 @@
       return;
     }
 
-    var plu = masterlistSearchResult.plu_code;
-    var description = document.getElementById('meDesc').value.trim();
-    var material = document.getElementById('meMaterial').value.trim();
-    var uom = document.getElementById('meUom').value.trim();
-    var category = document.getElementById('meCategory').value;
+    var originalPlu = masterlistSearchResult.plu_code;
+    var rowId = masterlistSearchResult.id;
+    var vals = masterlistEditValues;
+    var newPlu = vals.plu_code;
 
     var statusEl = document.getElementById('masterlistEditStatus');
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
 
-    addMasterlistItemToSupabase(plu, description, material, uom, category)
+    // Renaming needs a direct id-based update, not the usual upsert-by-
+    // plu_code helper — that would look up the NEW code, find nothing,
+    // and insert a brand-new row while leaving the old one behind as an
+    // orphaned duplicate. A conflict check comes first so a rename can
+    // never silently collide with a different existing PLU.
+    var conflictCheck = (newPlu !== originalPlu)
+      ? sb.from('masterlist').select('id').eq('plu_code', newPlu).neq('id', rowId)
+          .then(function(res){
+            if(res.error) throw new Error(res.error.message);
+            if(res.data && res.data.length){
+              throw new Error('PLU ' + newPlu + ' already exists as a different Masterlist entry. Resolve that conflict first.');
+            }
+          })
+      : Promise.resolve();
+
+    conflictCheck
       .then(function(){
+        return sb.from('masterlist')
+          .update({ plu_code: newPlu, description: vals.description, material: vals.material, uom: vals.uom, category: vals.category })
+          .eq('id', rowId);
+      })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
         return getMasterlistFromSupabase();
       })
       .then(function(list){
@@ -2765,9 +2806,10 @@
         masterlistByPlu = {};
         list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
 
-        masterlistSearchResult = { plu_code: plu, description: description, material: material, uom: uom, category: category };
+        masterlistSearchResult = { id: rowId, plu_code: newPlu, description: vals.description, material: vals.material, uom: vals.uom, category: vals.category };
         masterlistEditMode = false;
         masterlistConfirmMode = false;
+        masterlistEditValues = null;
         renderMasterlistSearchResult();
         document.getElementById('masterlistSearchStatus').innerHTML = '<div class="status ok">Masterlist item updated.</div>';
       })
