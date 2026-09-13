@@ -34,6 +34,11 @@
       color:var(--muted);cursor:pointer;font-family:inherit;
     }
     nav.tabs button.active{background:var(--accent);color:#fff;}
+    .outlet-notice{
+      font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-soft);
+      border:1px solid var(--border);border-radius:8px;padding:7px 12px;margin-bottom:16px;
+      text-transform:uppercase;letter-spacing:0.4px;text-align:center;
+    }
 
     .card{
       background:var(--panel);border:1px solid var(--border);border-radius:12px;
@@ -147,7 +152,7 @@
       <div class="brand-mark">BS</div>
       <div>
         <h1>SHBN - Bad Stock Log</h1>
-        <p>Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit</p>
+        <p>Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
       </div>
     </div>
     <nav class="tabs">
@@ -156,6 +161,8 @@
       <button id="tabBtnAdmin" onclick="showTab('admin')">Admin</button>
     </nav>
   </header>
+
+  <div id="outletNotice" class="outlet-notice"></div>
 
   <!-- Loading state while masterlist loads -->
   <div id="loadingView" class="card">
@@ -1007,8 +1014,14 @@
     return match ? match.label : plant;
   }
 
+  function updateOutletNotice(){
+    var el = document.getElementById('outletNotice');
+    if(el) el.textContent = 'Outlet: ' + outletLabel(currentOutletPlant);
+  }
+
   function loadCategories(){
     appCategories = FRESH_MARKET_CATEGORIES; // still used for IT Entry / Admin category chips
+    updateOutletNotice();
     document.getElementById('loadingView').style.display = 'none';
     showTab('new');
 
@@ -1650,7 +1663,7 @@
     filtered.forEach(function(batch){
       var key = batch.txnId;
 
-      // Reuse pendingDraft + printBatch()/sendToPrintStation() as-is by
+      // Reuse pendingDraft + printBatch() as-is by populating the same
       // populating the same shape those functions already expect, with
       // "submitted" always set — Completed entries are read-only, no
       // Save Changes / qty editing offered here.
@@ -1682,11 +1695,7 @@
         '</div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
         '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(batch.materialDocument) + '</div>' +
-        '<div class="btn-row">' +
-        '<button class="btn secondary" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
-        '<button class="btn ghost" id="sendPrintBtn_' + safeKey + '" onclick="sendToPrintStation(\'' + key + '\')">Send to Print Station</button>' +
-        '</div>' +
-        '<div id="sendPrintStatus_' + safeKey + '"></div>';
+        '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>';
       container.appendChild(card);
     });
   }
@@ -1702,7 +1711,6 @@
       card.className = 'card';
 
       if(draft.submitted){
-        var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
         card.innerHTML =
           '<div class="pending-card-header">' +
             '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
@@ -1710,11 +1718,7 @@
           '</div>' +
           '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
           '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(draft.materialDocument) + '</div>' +
-          '<div class="btn-row">' +
-          '<button class="btn secondary" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
-          '<button class="btn ghost" id="sendPrintBtn_' + safeKey + '" onclick="sendToPrintStation(\'' + key + '\')">Send to Print Station</button>' +
-          '</div>' +
-          '<div id="sendPrintStatus_' + safeKey + '"></div>';
+          '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>';
         container.appendChild(card);
         return;
       }
@@ -1754,11 +1758,7 @@
         '<div id="pendingAddStatus_' + pendingSafeKey + '"></div>' +
         '<button class="btn secondary btn-full" onclick="saveDraftChanges(\'' + key + '\')">Save Changes</button>' +
         '<div id="pendingSaveStatus_' + pendingSafeKey + '"></div>' +
-        '<div class="btn-row">' +
-        '<button class="btn secondary" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
-        '<button class="btn ghost" id="sendPrintBtn_' + pendingSafeKey + '" onclick="sendToPrintStation(\'' + key + '\')">Send to Print Station</button>' +
-        '</div>' +
-        '<div id="sendPrintStatus_' + pendingSafeKey + '"></div>' +
+        '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
         sapCopySectionHtml(key, draft) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
@@ -1847,7 +1847,7 @@
         '<td>' + escapeHtml(it.material || '') + '</td>' +
         '<td>' + escapeHtml(String(it.qty)) + '</td>' +
         '<td>' + escapeHtml(it.uom || '') + '</td>' +
-        '<td>1008</td><td>1000</td><td>2</td>' +
+        '<td>' + escapeHtml(currentOutletPlant) + '</td><td>1000</td><td>2</td>' +
         '</tr>';
     }).join('');
 
@@ -1903,7 +1903,7 @@
     var statusEl = document.getElementById('sapCopyStatus_' + safeKey);
 
     var tsv = chunkItems.map(function(it){
-      return [it.material || '', it.qty, it.uom || '', '1008', '1000', '2'].join('\t');
+      return [it.material || '', it.qty, it.uom || '', currentOutletPlant, '1000', '2'].join('\t');
     }).join('\n');
 
     navigator.clipboard.writeText(tsv)
@@ -2220,110 +2220,6 @@
     setTimeout(function(){ win.focus(); win.print(); }, 300);
   }
 
-  // ---------- Send to Print Station (Supabase print_queue table) ----------
-  // Queues this batch for the shared Print Station page instead of printing
-  // locally. Print Station itself now reads Fresh Market's queue directly
-  // from Supabase (print_queue + bad_stock_fresh_market), no Apps Script
-  // involved on this side any more.
-
-  function requestPrintToSupabase(batchId){
-    var requestId = 'PR' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    return sb.from('print_queue').insert([{ request_id: requestId, batch_id: batchId, status: 'PENDING' }])
-      .then(function(res){
-        if(res.error) throw new Error(res.error.message);
-        return { requestId: requestId };
-      });
-  }
-
-  function fetchPrintRequestStatusFromSupabase(requestId){
-    return sb.from('print_queue').select('status').eq('request_id', requestId).single()
-      .then(function(res){
-        if(res.error) throw new Error(res.error.message);
-        return { status: res.data.status };
-      });
-  }
-
-  function sendToPrintStation(key){
-    var draft = pendingDraft[key];
-    var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
-                adminPendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
-                completedEntries.find(function(b){ return pendingKey(b) === key; });
-    if(!draft || !batch) return;
-    var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
-    var btn = document.getElementById('sendPrintBtn_' + safeKey);
-    var statusEl = document.getElementById('sendPrintStatus_' + safeKey);
-
-    var itemsToCheck = draft.submitted ? draft.submitted.items : draft.items;
-    if(itemsToCheck.some(function(it){ return !it.description; })){
-      alert('Some data is not in the masterlist. Please check.');
-      return;
-    }
-
-    if(btn) btn.disabled = true;
-    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
-
-    submissionHasUnresolvedSiblings(itemsToCheck)
-      .then(function(blocked){
-        if(blocked){
-          statusEl.innerHTML = '<div class="status err">This submission still has a Problem PLU pending in another category. Resolve it under IT Entry \u2192 Problem PLUs before printing.</div>';
-          if(btn) btn.disabled = false;
-          return;
-        }
-
-        // If this batch hasn't been submitted yet, save its current items
-        // to Supabase first — Print Station reads straight from
-        // bad_stock_fresh_market, so an unsaved edit here would otherwise
-        // print stale data. Already-completed batches skip straight to
-        // queuing.
-        var ensureSaved = draft.submitted
-          ? Promise.resolve()
-          : (statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving changes...</div>', persistPendingDraft(key));
-
-        return ensureSaved
-          .then(function(){
-            statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Sending...</div>';
-            return requestPrintToSupabase(batch.txnId);
-          })
-          .then(function(res){
-            statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Waiting for Print Station...</div>';
-            pollPrintRequest(res.requestId, safeKey, btn, statusEl);
-          });
-      })
-      .catch(function(err){
-        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
-        if(btn) btn.disabled = false;
-      });
-  }
-
-  function pollPrintRequest(requestId, safeKey, btn, statusEl){
-    var attempts = 0;
-    var maxAttempts = 40; // ~2 minutes at 3s intervals
-    var interval = setInterval(function(){
-      attempts++;
-      fetchPrintRequestStatusFromSupabase(requestId)
-        .then(function(data){
-          if(data.status === 'PRINTED'){
-            clearInterval(interval);
-            statusEl.innerHTML = '<div class="status ok">Printed at the Print Station.</div>';
-            if(btn) btn.disabled = false;
-          } else if(data.status === 'CANCELLED'){
-            clearInterval(interval);
-            statusEl.innerHTML = '<div class="status err">Print request was cancelled at the Print Station.</div>';
-            if(btn) btn.disabled = false;
-          } else if(attempts >= maxAttempts){
-            clearInterval(interval);
-            statusEl.innerHTML = '<div class="status err">Still waiting — make sure the Print Station tab is open.</div>';
-            if(btn) btn.disabled = false;
-          }
-        })
-        .catch(function(err){
-          clearInterval(interval);
-          statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
-          if(btn) btn.disabled = false;
-        });
-    }, 3000);
-  }
-
   // ================= ADMIN =================
 
   // Checked client-side rather than via Apps Script — this was the last
@@ -2382,6 +2278,7 @@
     } catch (e) { /* storage unavailable — still applies for this page load */ }
 
     currentOutletPlant = selected;
+    updateOutletNotice();
     statusEl.innerHTML = '<div class="status ok">Outlet set to ' + escapeHtml(outletLabel(selected)) + '.</div>';
 
     // Clear cached pending/completed data so the next visit to IT Entry
@@ -2878,7 +2775,7 @@
       'Delete this pending transaction?\n\n' +
       batch.category + ' \u00b7 ' + batch.dateDisplay + '\n' +
       batch.staff + ' / ' + batch.supervisor + '\n\n' +
-      'This will permanently remove it from the Google Sheet and cannot be undone.'
+      'This will permanently remove it from Supabase and cannot be undone.'
     );
     if(!confirmed) return;
 
