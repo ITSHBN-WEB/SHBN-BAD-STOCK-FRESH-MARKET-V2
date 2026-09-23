@@ -264,7 +264,12 @@
     <div id="completedSubView" style="display:none;">
       <div class="card">
         <h2>Date Range</h2>
-        <div class="category-picker" id="completedDaysPicker"></div>
+        <label>Date From</label>
+        <input type="date" id="completedDateFrom">
+        <label>Date To</label>
+        <input type="date" id="completedDateTo">
+        <button class="btn btn-full" onclick="runCompletedDateRange()">Run</button>
+        <div id="completedDateStatus"></div>
       </div>
 
       <div class="card">
@@ -720,22 +725,25 @@
   }
 
   // ---------- Supabase: getCompletedEntries ----------
-  // Reads status='keyed_in' rows within a rolling window (days back from
-  // now) and groups them the same way as getPendingEntriesFromSupabase,
-  // plus materialDocument/keyInBy at the batch level. Nothing is ever
-  // deleted from Supabase — this is purely a query-side cutoff so the app
-  // doesn't have to pull an ever-growing history into memory. Rows older
-  // than the selected range simply stop being fetched; they're still in
-  // the bad_stock_fresh_market table and remain visible in Supabase itself.
-  function getCompletedEntriesFromSupabase(days){
-    var cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+  // Reads status='keyed_in' rows between an explicit Date From / Date To
+  // range (inclusive of both days) and groups them the same way as
+  // getPendingEntriesFromSupabase, plus materialDocument/keyInBy at the
+  // batch level. Nothing is ever deleted from Supabase — this only
+  // controls what gets fetched into the app; everything outside the
+  // chosen range stays fully intact and visible in Supabase itself.
+  function getCompletedEntriesFromSupabase(fromDateStr, toDateStr){
+    // fromDateStr/toDateStr are 'YYYY-MM-DD' values straight from the
+    // date inputs. Bounds are computed as local-day boundaries so "To"
+    // includes the entire selected day, not just its first instant.
+    var fromBound = new Date(fromDateStr + 'T00:00:00');
+    var toBound = new Date(toDateStr + 'T23:59:59.999');
 
     return sb.from('bad_stock_fresh_market')
       .select('*')
       .eq('status', 'keyed_in')
       .eq('plant', currentOutletPlant)
-      .gte('entry_date', cutoff.toISOString())
+      .gte('entry_date', fromBound.toISOString())
+      .lte('entry_date', toBound.toISOString())
       .order('entry_date', { ascending: false })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -955,7 +963,6 @@
   var itEntrySubView = 'pending';     // 'pending' or 'completed', within IT Entry
   var completedEntries = [];          // raw data from getCompletedEntriesFromSupabase()
   var selectedCompletedCategory = null;
-  var selectedCompletedDays = 30;     // default date-range filter for Completed view
 
   // ---------- Startup: load masterlist once, cache client-side ----------
   window.addEventListener('DOMContentLoaded', function(){
@@ -1585,36 +1592,68 @@
     document.getElementById('itSubTabProblem').classList.toggle('active', view === 'problem');
 
     if(view === 'completed'){
-      renderCompletedDaysPicker();
-      loadCompletedEntries();
+      initCompletedDateInputs();
     } else if(view === 'problem'){
       loadProblemPlus();
     }
   }
 
-  function renderCompletedDaysPicker(){
-    var picker = document.getElementById('completedDaysPicker');
-    picker.innerHTML = '';
-    [10, 30, 60, 90].forEach(function(days){
-      var chip = document.createElement('div');
-      chip.className = 'category-chip' + (selectedCompletedDays === days ? ' active' : '');
-      chip.textContent = 'Last ' + days + ' Days';
-      chip.onclick = function(){
-        selectedCompletedDays = days;
-        renderCompletedDaysPicker();
-        loadCompletedEntries();
-      };
-      picker.appendChild(chip);
-    });
+  // Pre-fills Date From/To with a sensible starting range (last 30 days)
+  // the first time Completed is opened, without fetching anything — the
+  // person still has to press Run themselves to actually load results,
+  // same as picking a fresh range on any later visit.
+  function initCompletedDateInputs(){
+    var fromEl = document.getElementById('completedDateFrom');
+    var toEl = document.getElementById('completedDateTo');
+    if(fromEl.value && toEl.value) return; // already set from an earlier visit this session
+
+    var today = new Date();
+    var from = new Date();
+    from.setDate(from.getDate() - 30);
+
+    function toDateInputValue(d){
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+
+    fromEl.value = toDateInputValue(from);
+    toEl.value = toDateInputValue(today);
   }
 
-  function loadCompletedEntries(){
+  function runCompletedDateRange(){
+    var fromVal = document.getElementById('completedDateFrom').value;
+    var toVal = document.getElementById('completedDateTo').value;
+    var statusEl = document.getElementById('completedDateStatus');
+
+    if(!fromVal || !toVal){
+      statusEl.innerHTML = '<div class="status err">Please select both Date From and Date To.</div>';
+      return;
+    }
+    if(fromVal > toVal){
+      statusEl.innerHTML = '<div class="status err">Date From must be on or before Date To.</div>';
+      return;
+    }
+
+    statusEl.innerHTML = '';
+    loadCompletedEntries(fromVal, toVal);
+  }
+
+  function loadCompletedEntries(fromVal, toVal){
+    // Reuses whatever's currently in the date inputs if called without
+    // explicit dates (e.g. Refresh button) — Run is only needed to change
+    // the range, not to reload the same one.
+    fromVal = fromVal || document.getElementById('completedDateFrom').value;
+    toVal = toVal || document.getElementById('completedDateTo').value;
+    if(!fromVal || !toVal) return;
+
     document.getElementById('completedCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('completedList').innerHTML = '';
     document.getElementById('completedEmpty').style.display = 'none';
     document.getElementById('completedCategoryEmpty').style.display = 'none';
 
-    getCompletedEntriesFromSupabase(selectedCompletedDays)
+    getCompletedEntriesFromSupabase(fromVal, toVal)
       .then(function(entries){
         completedEntries = entries;
         document.getElementById('completedCount').textContent = entries.length;
