@@ -151,7 +151,7 @@
     <div class="brand">
       <div class="brand-mark">BS</div>
       <div>
-        <h1>SHBN - Bad Stock Log</h1>
+        <h1 id="appTitle">SHBN - Bad Stock Log</h1>
         <p>Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
       </div>
     </div>
@@ -993,8 +993,8 @@
   // whichever outlet is currently set on this device. The Masterlist has
   // no outlet field at all and always stays shared between outlets.
   var OUTLET_OPTIONS = [
-    { plant: '1008', label: '1008-SHBN' },
-    { plant: '1015', label: '1015-SHPL' }
+    { plant: '1008', label: '1008-SHBN', shortName: 'SHBN' },
+    { plant: '1015', label: '1015-SHPL', shortName: 'SHPL' }
   ];
   var DEFAULT_OUTLET_PLANT = '1008';
   var OUTLET_STORAGE_KEY = 'shbn_bad_stock_outlet_v1';
@@ -1014,14 +1014,28 @@
     return match ? match.label : plant;
   }
 
-  function updateOutletNotice(){
-    var el = document.getElementById('outletNotice');
-    if(el) el.textContent = 'Outlet: ' + outletLabel(currentOutletPlant);
+  // Falls back to 'SHBN' (this app's original outlet) for a plant with no
+  // configured OUTLET_OPTIONS entry, rather than showing a raw plant code
+  // in the header/report title.
+  function outletShortName(plant){
+    var match = OUTLET_OPTIONS.find(function(o){ return o.plant === plant; });
+    return match ? match.shortName : 'SHBN';
+  }
+
+  // Keeps the header title and the outlet notice banner in sync with
+  // whichever outlet is currently active on this device — called on
+  // startup and again whenever Admin switches outlets, so the app (and
+  // anything printed from it) always identifies the right store.
+  function applyOutletBranding(){
+    var titleEl = document.getElementById('appTitle');
+    if(titleEl) titleEl.textContent = outletShortName(currentOutletPlant) + ' - Bad Stock Log';
+    var noticeEl = document.getElementById('outletNotice');
+    if(noticeEl) noticeEl.textContent = 'Outlet: ' + outletLabel(currentOutletPlant);
   }
 
   function loadCategories(){
     appCategories = FRESH_MARKET_CATEGORIES; // still used for IT Entry / Admin category chips
-    updateOutletNotice();
+    applyOutletBranding();
     document.getElementById('loadingView').style.display = 'none';
     showTab('new');
 
@@ -2167,8 +2181,12 @@
       return '<tr><td>' + escapeHtml(it.plu) + '</td><td>' + escapeHtml(it.description || '') + '</td><td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.uom || '') + '</td></tr>';
     }).join('');
 
+    // Reflects whichever outlet is currently active on this device, so a
+    // report printed at 1015-SHPL correctly reads "SHPL", not "SHBN".
+    var outletName = outletShortName(currentOutletPlant);
+
     var html =
-      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SHBN Bad Stock Log</title><style>' +
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Bad Stock Log</title><style>' +
       'body{font-family:Georgia, "Times New Roman", serif;color:#222;margin:32px;}' +
       '.title{text-align:center;font-size:20px;font-weight:700;letter-spacing:0.5px;margin-bottom:2px;}' +
       '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
@@ -2190,7 +2208,7 @@
       '<table>' +
         '<thead>' +
           '<tr><th colspan="4" class="doc-head-cell">' +
-            '<div class="title">SHBN &mdash; Bad Stock Log</div>' +
+            '<div class="title">' + escapeHtml(outletName) + ' &mdash; Bad Stock Log</div>' +
             '<div class="subtitle">Bad Stock Report</div>' +
             '<div class="meta">' +
               '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
@@ -2278,7 +2296,7 @@
     } catch (e) { /* storage unavailable — still applies for this page load */ }
 
     currentOutletPlant = selected;
-    updateOutletNotice();
+    applyOutletBranding();
     statusEl.innerHTML = '<div class="status ok">Outlet set to ' + escapeHtml(outletLabel(selected)) + '.</div>';
 
     // Clear cached pending/completed data so the next visit to IT Entry
