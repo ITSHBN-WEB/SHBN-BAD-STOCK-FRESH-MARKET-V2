@@ -152,7 +152,7 @@
       <div class="brand-mark">BS</div>
       <div>
         <h1 id="appTitle">SHBN - Bad Stock Log</h1>
-        <p>Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
+        <p id="categorySubtitle">Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
       </div>
     </div>
     <nav class="tabs">
@@ -306,6 +306,15 @@
         <button class="btn btn-full" onclick="saveOutletSetting()">Save Outlet</button>
         <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, IT Entry, Completed, and Problem PLUs. The Masterlist itself stays shared between outlets.</p>
         <div id="outletSettingStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">+</span> Add New Category</h2>
+        <label>Category Name</label>
+        <input type="text" id="newCategoryInput" placeholder="e.g. Bakery">
+        <button class="btn btn-full" onclick="submitNewCategory()">Save Category</button>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Shared with the Masterlist — a category added here shows up on both 1008-SHBN and 1015-SHPL's devices, across New Entry, IT Entry, and every Masterlist tool.</p>
+        <div id="newCategoryStatus"></div>
       </div>
 
       <div class="card">
@@ -958,7 +967,7 @@
   var pendingEntries = [];     // raw data from getPendingEntries()
   var pendingDraft = {};       // keyed by txnId -> { items, materialDocument, keyInBy }
   var adminUnlocked = false;
-  var appCategories = [];      // set once from FRESH_MARKET_CATEGORIES
+  var appCategories = [];      // set once from getCategoriesFromSupabase()
   var selectedPendingCategory = null; // which category is currently shown in IT Entry
   var itEntrySubView = 'pending';     // 'pending' or 'completed', within IT Entry
   var completedEntries = [];          // raw data from getCompletedEntriesFromSupabase()
@@ -979,12 +988,17 @@
       });
   });
 
-  // Hardcoded rather than fetched from the legacy Apps Script backend —
-  // this list changes rarely (only once so far, adding "Frozen & Dried
-  // Food"), and removing this call is one less thing still depending on
-  // Apps Script. Update this array directly whenever a category is
-  // added/renamed.
-  var FRESH_MARKET_CATEGORIES = ['Meat & Seafood', 'Local Vege', 'Import Vege', 'Fruit', 'Frozen & Dried Food'];
+  // Categories live in Supabase (a `categories` table) rather than being
+  // hardcoded per-repo — this is what lets Admin add a new one from
+  // either outlet's device and have it appear on the OTHER outlet's
+  // deployment too, the same way the Masterlist is already shared.
+  function getCategoriesFromSupabase(){
+    return sb.from('categories').select('name').order('id', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return res.data.map(function(row){ return row.name; });
+      });
+  }
 
   // Multi-outlet support: each outlet gets its own deployment/repo of this
   // same codebase, sharing one Supabase project and masterlist but keeping
@@ -1040,35 +1054,50 @@
     if(noticeEl) noticeEl.textContent = 'Outlet: ' + outletLabel(currentOutletPlant);
   }
 
+  // Reflects the current category list in the header subtitle, so it
+  // never goes stale after Admin adds a new one.
+  function updateCategorySubtitle(){
+    var el = document.getElementById('categorySubtitle');
+    if(el) el.textContent = appCategories.join(' \u00b7 ');
+  }
+
   function loadCategories(){
-    appCategories = FRESH_MARKET_CATEGORIES; // still used for IT Entry / Admin category chips
-    applyOutletBranding();
-    document.getElementById('loadingView').style.display = 'none';
-    showTab('new');
+    getCategoriesFromSupabase()
+      .then(function(categories){
+        appCategories = categories;
+        updateCategorySubtitle();
+        applyOutletBranding();
+        document.getElementById('loadingView').style.display = 'none';
+        showTab('new');
 
-    var draft = loadDraft();
-    if(draft && draft.staff && draft.supervisor){
-      sessionStaff = draft.staff;
-      sessionSupervisor = draft.supervisor;
-      cart = draft.cart || [];
+        var draft = loadDraft();
+        if(draft && draft.staff && draft.supervisor){
+          sessionStaff = draft.staff;
+          sessionSupervisor = draft.supervisor;
+          cart = draft.cart || [];
 
-      document.getElementById('staffInput').value = sessionStaff;
-      document.getElementById('supervisorInput').value = sessionSupervisor;
+          document.getElementById('staffInput').value = sessionStaff;
+          document.getElementById('supervisorInput').value = sessionSupervisor;
 
-      enterStep2();
-      renderCart();
+          enterStep2();
+          renderCart();
 
-      // Restore an in-progress PLU/qty lookup that hadn't been added
-      // to the cart yet when the connection dropped or the page was
-      // refreshed, so nothing the person typed gets lost.
-      if(draft.pluInput){
-        document.getElementById('pluInput').value = draft.pluInput;
-        lookupPlu();
-        if(draft.qtyInput) document.getElementById('qtyInput').value = draft.qtyInput;
-      }
-    } else {
-      document.getElementById('step1View').style.display = 'block';
-    }
+          // Restore an in-progress PLU/qty lookup that hadn't been added
+          // to the cart yet when the connection dropped or the page was
+          // refreshed, so nothing the person typed gets lost.
+          if(draft.pluInput){
+            document.getElementById('pluInput').value = draft.pluInput;
+            lookupPlu();
+            if(draft.qtyInput) document.getElementById('qtyInput').value = draft.qtyInput;
+          }
+        } else {
+          document.getElementById('step1View').style.display = 'block';
+        }
+      })
+      .catch(function(err){
+        document.getElementById('loadingView').innerHTML =
+          '<div class="status err">Failed to load categories: ' + err.message + '</div>';
+      });
   }
 
   // ---------- Tab switching ----------
@@ -2349,6 +2378,44 @@
 
     loadProblemPlus();
     loadAdminPendingList();
+  }
+
+  // ---------- Admin: Add New Category ----------
+  // Categories live in Supabase, shared with the Masterlist — adding one
+  // here is visible to both outlet deployments immediately, not just this
+  // device. Purely additive (no delete/rename here), so no confirmation
+  // step is needed, just a duplicate check.
+  function submitNewCategory(){
+    var name = document.getElementById('newCategoryInput').value.trim();
+    var statusEl = document.getElementById('newCategoryStatus');
+
+    if(!name){
+      statusEl.innerHTML = '<div class="status err">Enter a category name.</div>';
+      return;
+    }
+    var exists = appCategories.some(function(c){ return c.toLowerCase() === name.toLowerCase(); });
+    if(exists){
+      statusEl.innerHTML = '<div class="status err">This category already exists.</div>';
+      return;
+    }
+
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+
+    sb.from('categories').insert([{ name: name }])
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return getCategoriesFromSupabase();
+      })
+      .then(function(categories){
+        appCategories = categories;
+        updateCategorySubtitle();
+        populateAdminCategoryDropdown(); // so it's usable immediately in the form just below
+        document.getElementById('newCategoryInput').value = '';
+        statusEl.innerHTML = '<div class="status ok">Category added.</div>';
+      })
+      .catch(function(err){
+        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+      });
   }
 
   function populateAdminCategoryDropdown(){
