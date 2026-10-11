@@ -2478,14 +2478,16 @@
     document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('problemPluEmpty').style.display = 'none';
 
-    sb.from('bad_stock_fresh_market').select('plu_code, quantity, description').eq('status', 'unresolved').eq('plant', currentOutletPlant)
+    sb.from('bad_stock_fresh_market').select('plu_code, quantity, description, staff, supervisor, entry_date').eq('status', 'unresolved').eq('plant', currentOutletPlant)
+      .order('entry_date', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
         var grouped = {};
         res.data.forEach(function(row){
           var key = String(row.plu_code).trim();
-          if(!grouped[key]) grouped[key] = { plu: key, count: 0, totalQty: 0, description: '' };
+          if(!grouped[key]) grouped[key] = { plu: key, count: 0, totalQty: 0, description: '', entries: [] };
           grouped[key].count++;
+          grouped[key].entries.push({ staff: row.staff, supervisor: row.supervisor, dateDisplay: formatDateDisplay(row.entry_date), qty: row.quantity });
           grouped[key].totalQty += row.quantity;
           // Carry through whatever description staff typed at New Entry
           // (if any) so Problem PLUs never starts from a blank field —
@@ -2528,7 +2530,10 @@
           '<div><b>PLU ' + escapeHtml(p.plu) + '</b></div>' +
           '<span class="edit-link" onclick="toggleProblemPluEdit(\'' + p.plu + '\')">' + (isEditing ? 'Cancel' : '\u270E Edit') + '</span>' +
         '</div>' +
-        '<div class="pending-meta">' + p.count + ' entr' + (p.count === 1 ? 'y' : 'ies') + ' &middot; ' + p.totalQty + ' total qty</div>';
+        '<div class="pending-meta">' + p.count + ' entr' + (p.count === 1 ? 'y' : 'ies') + ' &middot; ' + p.totalQty + ' total qty</div>' +
+        p.entries.map(function(e){
+          return '<div class="pending-meta"><b>' + escapeHtml(e.staff || '-') + '</b> &middot; Sup: ' + escapeHtml(e.supervisor || '-') + ' &middot; ' + escapeHtml(e.dateDisplay || '') + ' &middot; qty ' + e.qty + '</div>';
+        }).join('');
 
       if(isEditing){
         var catOptions = appCategories.map(function(c){
