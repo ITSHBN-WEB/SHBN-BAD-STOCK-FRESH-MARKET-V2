@@ -114,6 +114,9 @@
     .pending-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
     .pending-meta{font-size:12.5px;color:var(--muted);}
     .pending-meta b{color:var(--text);}
+    .pending-toggle{cursor:pointer;}
+    .pending-chevron{display:inline-block;margin-left:6px;color:var(--text);font-size:14px;}
+    .pending-body{margin-top:4px;}
     .cat-tag{
       display:inline-block;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);
       padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:0.3px;
@@ -1782,6 +1785,30 @@
     });
   }
 
+  // ---------- Pending cards: expand / collapse ----------
+  // With several transactions in one category the page gets very long, so
+  // each pending card can fold down to its header (category, date, staff,
+  // supervisor). State is kept per batch so it survives re-renders; the
+  // default is collapsed when a category has 2+ transactions, expanded
+  // when there is only one.
+  var pendingCollapsedState = {};
+
+  function isPendingCollapsed(key, batchCount){
+    if(pendingCollapsedState[key] !== undefined) return pendingCollapsedState[key];
+    return batchCount > 1;
+  }
+
+  function togglePendingCard(headerEl, key){
+    var card = headerEl.parentNode;
+    var body = card.querySelector('.pending-body');
+    if(!body) return;
+    var nowCollapsed = body.style.display !== 'none';
+    body.style.display = nowCollapsed ? 'none' : '';
+    pendingCollapsedState[key] = nowCollapsed;
+    var chev = headerEl.querySelector('.pending-chevron');
+    if(chev) chev.textContent = nowCollapsed ? '\u25B8' : '\u25BE';
+  }
+
   function renderPendingList(batchesToRender){
     var container = document.getElementById('pendingList');
     container.innerHTML = '';
@@ -1821,12 +1848,17 @@
 
       var pendingSafeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
 
+      var collapsed = isPendingCollapsed(key, batchesToRender.length);
       card.innerHTML =
-        '<div class="pending-card-header">' +
-          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
-          '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
+        '<div class="pending-toggle" onclick="togglePendingCard(this, \'' + key + '\')">' +
+          '<div class="pending-card-header">' +
+            '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+            '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '\u25B8' : '\u25BE') + '</span></div>' +
+          '</div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
+            ' &middot; ' + draft.items.length + ' item' + (draft.items.length === 1 ? '' : 's') + '</div>' +
         '</div>' +
-        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+        '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
         '<table>' +
           '<thead><tr><th>Description</th><th>PLU</th><th>UOM</th><th>Qty</th><th></th></tr></thead>' +
           '<tbody>' + itemsHtml + '</tbody>' +
@@ -1848,7 +1880,8 @@
         '<label>Key In By</label>' +
         '<input type="text" class="pending-key-in-by" data-key="' + key + '" value="' + escapeHtml(draft.keyInBy) + '" placeholder="Enter your name">' +
         '<button class="btn btn-full" onclick="submitPendingBatch(\'' + key + '\')">Submit</button>' +
-        '<div id="pendingSubmitStatus_' + pendingSafeKey + '"></div>';
+        '<div id="pendingSubmitStatus_' + pendingSafeKey + '"></div>' +
+        '</div>';
 
       container.appendChild(card);
     });
