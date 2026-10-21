@@ -1572,9 +1572,9 @@
   }
 
   // ---------- Large-quantity check before submitting ----------
-  // Any PLU whose total exceeds LARGE_QTY_LIMIT (20 EA / 20 KG) must be
+  // Any PLU whose total exceeds LARGE_QTY_LIMIT (10 EA / 10 KG) must be
   // explicitly confirmed — or corrected — before the submit goes through.
-  var LARGE_QTY_LIMIT = 20;
+  var LARGE_QTY_LIMIT = 10;
 
   function submitCart(){
     if(!cart.length) return;
