@@ -2009,6 +2009,10 @@
     var chunkItems = draft.items.slice(start, start + size);
     var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
 
+    var copiedMap = draft.sapCopied || {};
+    var thisCopied = !!copiedMap[draft.sapChunkIndex];
+    var copiedCount = Object.keys(copiedMap).length;
+
     var rowsHtml = chunkItems.map(function(it){
       return '<tr>' +
         '<td>' + escapeHtml(it.material || '') + '</td>' +
@@ -2022,7 +2026,9 @@
       '<h2><span class="step-badge">&#128203;</span> Copy to SAP</h2>' +
       '<div class="pending-meta" style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
         '<span>Batch ' + (draft.sapChunkIndex + 1) + ' of ' + totalChunks +
-        ' &middot; ' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') + '</span>' +
+        ' &middot; ' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') +
+        (thisCopied ? ' &middot; <b style="color:var(--ok, #2f7d4f);">&#10003; Copied</b>' : '') +
+        ' &middot; ' + copiedCount + '/' + totalChunks + ' copied</span>' +
         '<span style="display:flex;align-items:center;gap:6px;">' +
           '<label style="margin:0;text-transform:none;font-size:12.5px;">Rows per batch</label>' +
           '<input type="number" min="1" max="50" step="1" value="' + size + '" style="width:60px;padding:5px 8px;" ' +
@@ -2033,10 +2039,12 @@
       '<tbody>' + rowsHtml + '</tbody></table>' +
       '<div class="btn-row">' +
         '<button class="btn ghost" ' + (draft.sapChunkIndex <= 0 ? 'disabled' : '') + ' onclick="sapChunkPrev(\'' + key + '\')">Prev</button>' +
-        '<button class="btn secondary" onclick="copySapChunk(\'' + key + '\')">Copy Batch</button>' +
+        '<button class="btn secondary" onclick="copySapChunk(\'' + key + '\')">' + (thisCopied ? 'Copy Again' : 'Copy Batch') + '</button>' +
         '<button class="btn ghost" ' + (draft.sapChunkIndex >= totalChunks - 1 ? 'disabled' : '') + ' onclick="sapChunkNext(\'' + key + '\')">Next</button>' +
       '</div>' +
-      '<div id="sapCopyStatus_' + safeKey + '"></div>';
+      '<div id="sapCopyStatus_' + safeKey + '">' +
+        (draft.sapNotice ? '<div class="status ok">' + escapeHtml(draft.sapNotice) + '</div>' : '') +
+      '</div>';
   }
 
   function setSapChunkSize(key, value){
@@ -2045,12 +2053,15 @@
     if(!size || size < 1) size = 1;
     draft.sapChunkSize = size;
     draft.sapChunkIndex = 0; // re-chunking invalidates the old page position
+    draft.sapCopied = {};    // ...and any "copied" marks
+    draft.sapNotice = '';
     renderPendingListFiltered();
   }
 
   function sapChunkPrev(key){
     var draft = pendingDraft[key];
     draft.sapChunkIndex = Math.max(0, (draft.sapChunkIndex || 0) - 1);
+    draft.sapNotice = '';
     renderPendingListFiltered();
   }
 
@@ -2058,6 +2069,7 @@
     var draft = pendingDraft[key];
     var totalChunks = sapTotalChunks(draft);
     draft.sapChunkIndex = Math.min(totalChunks - 1, (draft.sapChunkIndex || 0) + 1);
+    draft.sapNotice = '';
     renderPendingListFiltered();
   }
 
@@ -2075,8 +2087,18 @@
 
     navigator.clipboard.writeText(tsv)
       .then(function(){
-        statusEl.innerHTML = '<div class="status ok">Copied ' + chunkItems.length + ' row(s) to clipboard.</div>';
-        setTimeout(function(){ if(statusEl) statusEl.innerHTML = ''; }, 2000);
+        if(!draft.sapCopied) draft.sapCopied = {};
+        var copiedIdx = draft.sapChunkIndex || 0;
+        draft.sapCopied[copiedIdx] = true;
+        var total = sapTotalChunks(draft);
+        draft.sapNotice = 'Copied batch ' + (copiedIdx + 1) + ' of ' + total + ' (' + chunkItems.length + ' row' + (chunkItems.length === 1 ? '' : 's') + ').';
+        if(copiedIdx < total - 1){
+          draft.sapChunkIndex = copiedIdx + 1; // auto-advance, ready for the next paste
+          draft.sapNotice += ' Moved to batch ' + (copiedIdx + 2) + '.';
+        } else {
+          draft.sapNotice += ' That was the last batch.';
+        }
+        renderPendingListFiltered();
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Copy failed: ' + err.message + '</div>';
@@ -2220,32 +2242,99 @@
       });
   }
 
+  // ---------- Full-screen "please wait" overlay ----------
+  // For multi-step writes (resolving a Problem PLU, submitting a batch)
+  // that take a few seconds — blocks taps so nothing is double-submitted.
+  function showBusy(msg){
+    var el = document.getElementById('busyOverlay');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'busyOverlay';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10000;';
+      el.innerHTML = '<div class="card" style="margin:0;text-align:center;max-width:320px;width:100%;">' +
+        '<div><span class="spinner"></span></div>' +
+        '<div id="busyMsg" style="margin-top:10px;font-weight:600;"></div>' +
+        '<div class="pending-meta" style="margin-top:6px;">Please wait, do not close this page.</div></div>';
+      document.body.appendChild(el);
+    }
+    document.getElementById('busyMsg').textContent = msg || 'Working...';
+    el.style.display = 'flex';
+  }
+  function hideBusy(){
+    var el = document.getElementById('busyOverlay');
+    if(el) el.style.display = 'none';
+  }
+
+  // ---------- Duplicate Material Document check ----------
+  // Resolves with a description of another batch already using this
+  // Material Document number, or null if it is unused.
+  function findDuplicateMaterialDocument(doc, ownTxnId){
+    return sb.from('bad_stock_fresh_market')
+      .select('batch_id, category, staff, entry_date, plant')
+      .eq('material_document', doc)
+      .neq('batch_id', ownTxnId)
+      .limit(1)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        if(!res.data.length) return null;
+        var r = res.data[0];
+        return (r.category || '-') + ', ' + (r.staff || '-') + ', ' + formatDateDisplay(r.entry_date) + ' (' + r.plant + ')';
+      });
+  }
+
   function submitPendingBatch(key){
     var draft = pendingDraft[key];
     var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; });
     var statusId = 'pendingSubmitStatus_' + key.replace(/[^a-zA-Z0-9]/g,'_');
     var statusEl = document.getElementById(statusId);
 
+    var focusField = function(cls){
+      var f = document.querySelector('.' + cls + '[data-key="' + key + '"]');
+      if(f) f.focus();
+    };
     if(!draft.materialDocument || !draft.materialDocument.trim()){
       statusEl.innerHTML = '<div class="status err">Material Document is required.</div>';
+      focusField('pending-material-doc');
       return;
     }
     if(!draft.keyInBy || !draft.keyInBy.trim()){
       statusEl.innerHTML = '<div class="status err">Key In By is required.</div>';
+      focusField('pending-key-in-by');
       return;
     }
 
-    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
+    var doc = draft.materialDocument.trim();
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
+    showBusy('Submitting batch...');
 
-    submitITEntryToSupabase(batch.txnId, draft.items, {
-      category: batch.category, staff: batch.staff, supervisor: batch.supervisor
-    }, draft.materialDocument.trim(), draft.keyInBy.trim())
-      .then(function(res){
-        draft.submitted = res.printData;
-        statusEl.innerHTML = '';
-        renderPendingListFiltered();
+    findDuplicateMaterialDocument(doc, batch.txnId)
+      .then(function(dupInfo){
+        if(dupInfo){
+          hideBusy();
+          var proceed = confirm(
+            'Material Document ' + doc + ' is already used by another transaction:\n\n' +
+            dupInfo + '\n\nThis may be a typo. Submit anyway?'
+          );
+          if(!proceed){
+            statusEl.innerHTML = '<div class="status err">Cancelled. Please check the Material Document number.</div>';
+            focusField('pending-material-doc');
+            return null;
+          }
+          showBusy('Submitting batch...');
+        }
+        statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
+        return submitITEntryToSupabase(batch.txnId, draft.items, {
+          category: batch.category, staff: batch.staff, supervisor: batch.supervisor
+        }, doc, draft.keyInBy.trim())
+          .then(function(res){
+            draft.submitted = res.printData;
+            statusEl.innerHTML = '';
+            hideBusy();
+            renderPendingListFiltered();
+          });
       })
       .catch(function(err){
+        hideBusy();
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
       });
   }
@@ -2685,6 +2774,7 @@
     }
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+    showBusy('Saving PLU and moving entries to ' + category + '...');
 
     // If the PLU code itself was corrected (e.g. a scan typo), rename it
     // across every unresolved row using the old code first — matches how
@@ -2706,9 +2796,11 @@
         masterlistByPlu = {};
         list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
         problemPluEditing = null;
+        hideBusy();
         loadProblemPlus(); // resolved PLU should now disappear from the list
       })
       .catch(function(err){
+        hideBusy();
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
       });
   }
@@ -2732,14 +2824,17 @@
     if(!ok) return;
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
+    showBusy('Deleting PLU ' + plu + '...');
 
     sb.from('bad_stock_fresh_market').delete().eq('plu_code', plu).eq('status', 'unresolved').eq('plant', currentOutletPlant)
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
         problemPluEditing = null;
+        hideBusy();
         loadProblemPlus();
       })
       .catch(function(err){
+        hideBusy();
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
       });
   }
