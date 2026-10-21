@@ -20,7 +20,17 @@
     }
     .wrap{max-width:640px;margin:0 auto;}
     header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap;}
-    .brand{display:flex;align-items:center;gap:12px;}
+    .brand{display:flex;align-items:center;gap:12px;flex:1 1 100%;min-width:0;}
+    .brand-text{flex:1;min-width:0;}
+    .title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .sync-box{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);}
+    .sync-dot{width:8px;height:8px;border-radius:50%;background:#2f7d4f;display:inline-block;margin-right:5px;}
+    .sync-box.offline .sync-dot{background:var(--danger);}
+    .sync-box.warn .sync-dot{background:#c58a1b;}
+    .sync-box.busy .sync-dot{background:#c58a1b;animation:pulse 1s infinite;}
+    @keyframes pulse{50%{opacity:.3;}}
+    .sync-btn{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:7px;padding:4px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
+    .sync-btn:disabled{opacity:.5;cursor:default;}
     .brand-mark{
       width:40px;height:40px;border-radius:10px;background:var(--accent);
       display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0;
@@ -153,8 +163,14 @@
   <header>
     <div class="brand">
       <div class="brand-mark">BS</div>
-      <div>
-        <h1 id="appTitle">SHBN - Bad Stock Log</h1>
+      <div class="brand-text">
+        <div class="title-row">
+          <h1 id="appTitle">SHBN - Bad Stock Log</h1>
+          <div class="sync-box" id="syncBox">
+            <span><span class="sync-dot"></span><span id="syncText">Starting...</span></span>
+            <button class="sync-btn" id="forceRefreshBtn" onclick="forceRefreshAll()" title="Reload all data now">&#8635; Force refresh</button>
+          </div>
+        </div>
         <p id="categorySubtitle">Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
       </div>
     </div>
@@ -240,15 +256,12 @@
       </nav>
       <div id="itSubViewHeaderPending">
         <h2><span class="step-badge">&#9679;</span> Pending Entries<span class="pending-badge" id="pendingCount">0</span></h2>
-        <button class="btn ghost" style="margin-top:0;" onclick="loadPendingEntries()">Refresh</button>
       </div>
       <div id="itSubViewHeaderCompleted" style="display:none;">
         <h2><span class="step-badge">&#10003;</span> Completed Entries<span class="pending-badge" id="completedCount">0</span></h2>
-        <button class="btn ghost" style="margin-top:0;" onclick="loadCompletedEntries()">Refresh</button>
       </div>
       <div id="itSubViewHeaderProblem" style="display:none;">
         <h2><span class="step-badge">&#9888;</span> Problem PLUs<span class="pending-badge" id="problemPluCount">0</span></h2>
-        <button class="btn ghost" style="margin-top:0;" onclick="loadProblemPlus()">Refresh</button>
         <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">PLU codes scanned but not yet in the Masterlist. Fixing one here automatically moves every pending entry using that code into its correct category — only then does it become printable, under Pending.</p>
       </div>
     </div>
@@ -513,8 +526,9 @@
     });
   }
 
-  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems, submissionId){
-    return findBatchForDay(plant, category, staff, supervisor, status, new Date())
+  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems, submissionId, entryDate){
+    var when = entryDate ? new Date(entryDate) : new Date();
+    return findBatchForDay(plant, category, staff, supervisor, status, when)
       .then(function(existing){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         var existingByPlu = {};
@@ -522,7 +536,7 @@
           existing.existingRows.forEach(function(r){ existingByPlu[String(r.plu_code).trim()] = r; });
         }
 
-        var now = new Date().toISOString();
+        var now = when.toISOString();
         var ops = [];
         var newRows = [];
 
@@ -564,13 +578,13 @@
       });
   }
 
-  function submitBadStockToSupabase(outlet, staff, supervisor, items){
+  function submitBadStockToSupabase(outlet, staff, supervisor, items, resumeSubmissionId, entryDate){
     // One submissionId per New Entry submit click, shared across every
     // category batch (and the unresolved batch) that this cart's items
     // split into — this is what lets printBatch() later trace "is this
     // batch's originating submission still incomplete elsewhere" and
     // block printing until every sibling item is resolved.
-    var submissionId = 'S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    var submissionId = resumeSubmissionId || ('S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
 
     var groups = {};
     items.forEach(function(item){
@@ -580,16 +594,24 @@
     });
 
     var groupKeys = Object.keys(groups);
+    var doneKeys = {};
 
     return groupKeys.reduce(function(chain, key){
       return chain.then(function(){
         var isUnresolved = key === '__UNRESOLVED__';
         var category = isUnresolved ? null : key;
         var status = isUnresolved ? 'unresolved' : 'pending';
-        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key], submissionId);
+        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key], submissionId, entryDate)
+          .then(function(){ doneKeys[key] = true; });
       });
     }, Promise.resolve()).then(function(){
       return { count: items.length };
+    }).catch(function(err){
+      // Tell the caller which items were NOT saved, so an offline retry
+      // only re-sends those (re-sending saved ones would double their qty).
+      err.remainingItems = items.filter(function(it){ return !doneKeys[it.category || '__UNRESOLVED__']; });
+      err.submissionId = submissionId;
+      throw err;
     });
   }
 
@@ -1071,7 +1093,10 @@
         updateCategorySubtitle();
         applyOutletBranding();
         document.getElementById('loadingView').style.display = 'none';
+        lastSyncAt = Date.now();
+        nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
         showTab('new');
+        flushOutbox();
 
         var draft = loadDraft();
         if(draft && draft.staff && draft.supervisor){
@@ -1105,6 +1130,7 @@
 
   // ---------- Tab switching ----------
   function showTab(tab){
+    currentTab = tab;
     document.getElementById('newTabView').style.display = tab === 'new' ? 'block' : 'none';
     document.getElementById('itTabView').style.display = tab === 'it' ? 'block' : 'none';
     document.getElementById('adminTabView').style.display = tab === 'admin' ? 'block' : 'none';
@@ -1113,7 +1139,8 @@
     document.getElementById('tabBtnIt').classList.toggle('active', tab === 'it');
     document.getElementById('tabBtnAdmin').classList.toggle('active', tab === 'admin');
 
-    if(tab === 'it') loadPendingEntries();
+    if(tab === 'it'){ loadPendingEntries().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); }); }
+    updateSyncUi();
   }
 
   // ================= NEW ENTRY =================
@@ -1482,11 +1509,12 @@
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
     overlay.innerHTML =
       '<div class="card" style="max-width:420px;width:100%;margin:0;max-height:90vh;overflow:auto;">' +
-        '<h2 style="margin-top:0;">&#10003; Submitted successfully</h2>' +
+        '<h2 style="margin-top:0;">' + (sum.queued ? '&#9203; Saved on this device' : '&#10003; Submitted successfully') + '</h2>' +
+        (sum.queued ? '<div class="status err" style="margin:0 0 10px;">No connection. These items are stored safely and will be sent automatically when you are back online. Do not clear your browser data.</div>' : '') +
         '<div class="pending-meta"><b>' + escapeHtml(sum.staff) + '</b> &middot; ' + escapeHtml(sum.supervisor) + '</div>' +
         '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th><th style="text-align:right;">Total Qty</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>' +
-        '<div class="pending-meta" style="margin-top:10px;"><b>' + sum.total + '</b> item' + (sum.total === 1 ? '' : 's') + ' submitted</div>' +
+        '<div class="pending-meta" style="margin-top:10px;"><b>' + sum.total + '</b> item' + (sum.total === 1 ? '' : 's') + (sum.queued ? ' waiting to send' : ' submitted') + '</div>' +
         (sum.unmatched
           ? '<div class="status err" style="margin-top:10px;">' + sum.unmatched + ' PLU' + (sum.unmatched === 1 ? ' is' : 's are') + ' not in the masterlist. IT will review ' + (sum.unmatched === 1 ? 'it' : 'them') + ' before this can be printed.</div>'
           : '') +
@@ -1503,52 +1531,323 @@
     var statusEl = document.getElementById('submitStatus');
     if(!cart.length) return;
 
-    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
     document.getElementById('submitBtn').disabled = true;
-
-    // Build the summary from the cart BEFORE it is cleared.
     var summary = buildSubmitSummary(cart, sessionStaff, sessionSupervisor);
+    var staffNow = sessionStaff, supNow = sessionSupervisor, plantNow = currentOutletPlant;
 
-    submitBadStockToSupabase(currentOutletPlant, sessionStaff, sessionSupervisor, cart)
+    var finishReset = function(){
+      document.getElementById('staffInput').value = '';
+      document.getElementById('supervisorInput').value = '';
+      document.getElementById('submitBtn').disabled = false;
+      backToStep1();
+    };
+
+    // Offline: store it on this device and send automatically later.
+    var queueIt = function(items, submissionId){
+      outboxAdd({ plant: plantNow, staff: staffNow, supervisor: supNow, items: items, submissionId: submissionId || null, queuedAt: new Date().toISOString() });
+      var qsum = buildSubmitSummary(items, staffNow, supNow);
+      qsum.queued = true;
+      statusEl.innerHTML = '';
+      cart = [];
+      clearDraft();
+      renderCart();
+      updateSyncUi();
+      showSubmitSummary(qsum, finishReset);
+    };
+
+    if(!navigator.onLine){
+      queueIt(cart.slice());
+      return;
+    }
+
+    statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
+
+    submitBadStockToSupabase(plantNow, staffNow, supNow, cart)
       .then(function(res){
         statusEl.innerHTML = '';
         cart = [];
         clearDraft();
         renderCart();
-        showSubmitSummary(summary, function(){
-          document.getElementById('staffInput').value = '';
-          document.getElementById('supervisorInput').value = '';
-          document.getElementById('submitBtn').disabled = false;
-          backToStep1();
-        });
+        showSubmitSummary(summary, finishReset);
       })
       .catch(function(err){
+        if(isNetworkError(err)){
+          queueIt(err.remainingItems && err.remainingItems.length ? err.remainingItems : cart.slice(), err.submissionId);
+          return;
+        }
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
         document.getElementById('submitBtn').disabled = false;
       });
   }
 
+  // ---------- Offline outbox (New Entry) ----------
+  // A submission that cannot reach Supabase is kept in localStorage and
+  // re-sent automatically (on reconnect, and on every 30s tick). Each
+  // entry remembers its own outlet and original timestamp, so it lands
+  // under the right plant and date even if sent hours later.
+  var OUTBOX_KEY = 'shbn_bad_stock_outbox_v1';
+  var outboxFlushing = false;
+
+  function outboxLoad(){
+    try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || []; } catch(e){ return []; }
+  }
+  function outboxSave(list){
+    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  function outboxAdd(entry){
+    entry.id = 'O' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+    var list = outboxLoad();
+    list.push(entry);
+    outboxSave(list);
+  }
+  function isNetworkError(err){
+    if(!navigator.onLine) return true;
+    return /failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test((err && err.message) || '');
+  }
+
+  function flushOutbox(){
+    if(outboxFlushing || !navigator.onLine) return Promise.resolve(0);
+    var list = outboxLoad();
+    if(!list.length) return Promise.resolve(0);
+    outboxFlushing = true;
+    var sent = 0;
+
+    return list.reduce(function(chain, entry){
+      return chain.then(function(){
+        return submitBadStockToSupabase(entry.plant, entry.staff, entry.supervisor, entry.items, entry.submissionId, entry.queuedAt)
+          .then(function(){
+            sent++;
+            outboxSave(outboxLoad().filter(function(e){ return e.id !== entry.id; }));
+          })
+          .catch(function(err){
+            // Keep what still needs sending (partial saves must not repeat).
+            var cur = outboxLoad();
+            cur.forEach(function(e){
+              if(e.id === entry.id){
+                if(err.remainingItems && err.remainingItems.length) e.items = err.remainingItems;
+                if(err.submissionId) e.submissionId = err.submissionId;
+                e.lastError = err.message;
+              }
+            });
+            outboxSave(cur);
+            if(isNetworkError(err)) throw err; // stop; try again later
+          });
+      });
+    }, Promise.resolve())
+    .catch(function(){ /* offline again: leave the rest queued */ })
+    .then(function(){
+      outboxFlushing = false;
+      if(sent){
+        syncNote = sent + ' queued submission' + (sent === 1 ? '' : 's') + ' sent';
+        syncNoteUntil = Date.now() + 6000;
+      }
+      updateSyncUi();
+      return sent;
+    });
+  }
+
+  // ---------- Live auto-refresh + connection status ----------
+  // Every 30s the IT Entry view re-reads its data quietly (no spinner, no
+  // list blanking) and only redraws if something actually changed. It
+  // pauses while the tab is hidden, while a field is being typed in, and
+  // while a popup/overlay is open, so it never interrupts work.
+  var AUTO_REFRESH_MS = 30000;
+  var MASTERLIST_REFRESH_MS = 10 * 60 * 1000;
+  var lastSyncAt = null;
+  var nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+  var lastMasterlistAt = Date.now();
+  var syncInFlight = false;
+  var syncFailed = false;
+  var syncNote = '';
+  var syncNoteUntil = 0;
+  var currentTab = 'new';
+
+  function userIsEditing(){
+    var el = document.activeElement;
+    if(!el || el === document.body) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+  function overlayOpen(){
+    var b = document.getElementById('busyOverlay');
+    if(b && b.style.display !== 'none') return true;
+    return !!document.getElementById('submitSummaryOverlay') || !!document.getElementById('confirmModalOverlay');
+  }
+
+  function updateSyncUi(){
+    var box = document.getElementById('syncBox');
+    var txt = document.getElementById('syncText');
+    var btn = document.getElementById('forceRefreshBtn');
+    if(!box || !txt) return;
+
+    var queued = outboxLoad().length;
+    var cls = '', text;
+    if(!navigator.onLine){
+      cls = 'offline';
+      text = 'Offline · showing last loaded data';
+    } else if(syncInFlight){
+      cls = 'busy';
+      text = 'Refreshing...';
+    } else if(syncFailed){
+      cls = 'warn';
+      text = 'Could not refresh · retrying';
+    } else if(lastSyncAt){
+      var ago = Math.max(0, Math.round((Date.now() - lastSyncAt) / 1000));
+      var next = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
+      text = 'Live · updated ' + ago + 's ago';
+      if(currentTab === 'it') text += ' · next in ' + next + 's';
+    } else {
+      text = 'Live';
+    }
+    if(queued) text += ' · ' + queued + ' queued to send';
+    if(syncNote && Date.now() < syncNoteUntil) text += ' · ' + syncNote;
+    box.className = 'sync-box ' + cls;
+    txt.textContent = text;
+    if(btn) btn.disabled = syncInFlight;
+  }
+
+  // Silent refresh of whatever the current screen shows.
+  function autoRefreshNow(opts){
+    opts = opts || {};
+    if(syncInFlight) return Promise.resolve();
+    syncInFlight = true;
+    updateSyncUi();
+
+    var tasks = [flushOutbox()];
+    if(currentTab === 'it' && navigator.onLine){
+      var o = { silent: true, force: !!opts.force };
+      if(Date.now() - lastMasterlistAt > MASTERLIST_REFRESH_MS){ o.refreshMasterlist = true; }
+      if(itEntrySubView === 'pending'){
+        tasks.push(loadPendingEntries(o).then(function(){ if(o.refreshMasterlist) lastMasterlistAt = Date.now(); }));
+      } else if(itEntrySubView === 'problem'){
+        tasks.push(loadProblemPlus(o));
+      } else if(itEntrySubView === 'completed'){
+        tasks.push(loadCompletedEntries(null, null, o));
+      }
+    }
+
+    return Promise.all(tasks)
+      .then(function(){
+        syncFailed = false;
+        lastSyncAt = Date.now();
+      })
+      .catch(function(){
+        syncFailed = true;
+      })
+      .then(function(){
+        syncInFlight = false;
+        nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+        updateSyncUi();
+      });
+  }
+
+  // Force refresh: reloads everything — masterlist, categories, and every
+  // IT Entry list (+ Admin list if unlocked) — and shows a wait overlay.
+  function forceRefreshAll(){
+    if(syncInFlight) return;
+    if(!navigator.onLine){
+      alert('You are offline. Data will refresh when the connection returns.');
+      return;
+    }
+    syncInFlight = true;
+    updateSyncUi();
+    showBusy('Refreshing all data...');
+
+    var o = { silent: true, force: true, refreshMasterlist: true };
+    Promise.all([getMasterlistFromSupabase(), getCategoriesFromSupabase()])
+      .then(function(r){
+        masterlist = r[0];
+        masterlistByPlu = {};
+        r[0].forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
+        appCategories = r[1];
+        lastMasterlistAt = Date.now();
+        updateCategorySubtitle();
+        if(adminUnlocked){ populateAdminCategoryDropdown(); }
+        var tasks = [flushOutbox(), loadPendingEntries(o), loadProblemPlus(o)];
+        var from = document.getElementById('completedDateFrom').value;
+        var to = document.getElementById('completedDateTo').value;
+        if(from && to) tasks.push(loadCompletedEntries(from, to, o));
+        if(adminUnlocked) tasks.push(loadAdminPendingList());
+        return Promise.all(tasks);
+      })
+      .then(function(){
+        syncFailed = false;
+        lastSyncAt = Date.now();
+        syncNote = 'all data refreshed';
+        syncNoteUntil = Date.now() + 4000;
+      })
+      .catch(function(){ syncFailed = true; })
+      .then(function(){
+        syncInFlight = false;
+        nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+        hideBusy();
+        updateSyncUi();
+      });
+  }
+
+  // One 1-second heartbeat: updates the label, and triggers the 30s refresh
+  // when due (unless paused for typing / popups / hidden tab).
+  setInterval(function(){
+    updateSyncUi();
+    if(document.hidden || syncInFlight) return;
+    if(Date.now() < nextRefreshAt) return;
+    if(currentTab === 'it' && (userIsEditing() || overlayOpen())) return; // try again next second
+    autoRefreshNow();
+  }, 1000);
+
+  window.addEventListener('online', function(){ nextRefreshAt = 0; updateSyncUi(); });
+  window.addEventListener('offline', function(){ updateSyncUi(); });
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden && Date.now() > nextRefreshAt - 1000) nextRefreshAt = 0;
+  });
+
   // ================= IT ENTRY =================
 
-  function loadPendingEntries(){
-    document.getElementById('categoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
-    document.getElementById('pendingList').innerHTML = '';
-    document.getElementById('pendingEmpty').style.display = 'none';
-    document.getElementById('pendingCategoryEmpty').style.display = 'none';
+  var lastPendingSig = null;
+
+  // opts.silent: background refresh — no spinner/blanking, redraws only if
+  // the data changed, and errors are thrown to the caller instead of
+  // replacing the list. opts.force: redraw even if unchanged.
+  // opts.refreshMasterlist: (silent only) also re-download the masterlist.
+  function loadPendingEntries(opts){
+    opts = opts || {};
+    var silent = !!opts.silent;
+    if(!silent){
+      document.getElementById('categoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+      document.getElementById('pendingList').innerHTML = '';
+      document.getElementById('pendingEmpty').style.display = 'none';
+      document.getElementById('pendingCategoryEmpty').style.display = 'none';
+    }
 
     // Refresh the masterlist cache first — picks up anything an admin just
     // added (potentially from a different device/session), so the
     // description/material/uom fallback in getPendingEntriesFromSupabase()
     // below has the latest data to work with.
-    getMasterlistFromSupabase()
-      .then(function(list){
-        masterlist = list;
-        masterlistByPlu = {};
-        list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
-        return getPendingEntriesFromSupabase();
-      })
+    var masterStep = (silent && !opts.refreshMasterlist)
+      ? Promise.resolve()
+      : getMasterlistFromSupabase().then(function(list){
+          masterlist = list;
+          masterlistByPlu = {};
+          list.forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
+        });
+
+    return masterStep
+      .then(function(){ return getPendingEntriesFromSupabase(); })
       .then(function(entries){
-        pendingEntries = entries;
+        var sig = JSON.stringify(entries);
+        if(silent && !opts.force && sig === lastPendingSig) return; // nothing changed
+        lastPendingSig = sig;
+
+        // A batch the person just submitted is no longer "pending" on the
+        // server, but its Print Here card must stay on screen. Keep those
+        // through background/forced refreshes (a plain tab visit still
+        // starts clean, as before).
+        var kept = (silent || opts.force) ? pendingEntries.filter(function(b){
+          var d = pendingDraft[pendingKey(b)];
+          return d && d.submitted && !entries.some(function(e){ return pendingKey(e) === pendingKey(b); });
+        }) : [];
+
+        pendingEntries = entries.concat(kept);
         document.getElementById('pendingCount').textContent = entries.length;
 
         entries.forEach(function(batch){
@@ -1602,7 +1901,7 @@
         });
 
         // if the previously selected category no longer has any entries, clear the selection
-        if(selectedPendingCategory && !entries.some(function(b){ return b.category === selectedPendingCategory; })){
+        if(selectedPendingCategory && !pendingEntries.some(function(b){ return b.category === selectedPendingCategory; })){
           selectedPendingCategory = null;
         }
 
@@ -1610,6 +1909,7 @@
         renderPendingListFiltered();
       })
       .catch(function(err){
+        if(silent) throw err;
         document.getElementById('categoryPicker').innerHTML = '';
         document.getElementById('pendingList').innerHTML =
           '<div class="status err">Failed to load pending entries: ' + err.message + '</div>';
@@ -1724,7 +2024,11 @@
     loadCompletedEntries(fromVal, toVal);
   }
 
-  function loadCompletedEntries(fromVal, toVal){
+  var lastCompletedSig = null;
+
+  function loadCompletedEntries(fromVal, toVal, opts){
+    opts = opts || {};
+    var silent = !!opts.silent;
     // Reuses whatever's currently in the date inputs if called without
     // explicit dates (e.g. Refresh button) — Run is only needed to change
     // the range, not to reload the same one.
@@ -1732,13 +2036,18 @@
     toVal = toVal || document.getElementById('completedDateTo').value;
     if(!fromVal || !toVal) return;
 
-    document.getElementById('completedCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
-    document.getElementById('completedList').innerHTML = '';
-    document.getElementById('completedEmpty').style.display = 'none';
-    document.getElementById('completedCategoryEmpty').style.display = 'none';
+    if(!silent){
+      document.getElementById('completedCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+      document.getElementById('completedList').innerHTML = '';
+      document.getElementById('completedEmpty').style.display = 'none';
+      document.getElementById('completedCategoryEmpty').style.display = 'none';
+    }
 
-    getCompletedEntriesFromSupabase(fromVal, toVal)
+    return getCompletedEntriesFromSupabase(fromVal, toVal)
       .then(function(entries){
+        var sig = fromVal + '|' + toVal + '|' + JSON.stringify(entries);
+        if(silent && !opts.force && sig === lastCompletedSig) return;
+        lastCompletedSig = sig;
         completedEntries = entries;
         document.getElementById('completedCount').textContent = entries.length;
 
@@ -1750,6 +2059,7 @@
         renderCompletedListFiltered();
       })
       .catch(function(err){
+        if(silent) throw err;
         document.getElementById('completedCategoryPicker').innerHTML = '';
         document.getElementById('completedList').innerHTML =
           '<div class="status err">Failed to load completed entries: ' + err.message + '</div>';
@@ -2547,16 +2857,32 @@
       return;
     }
 
-    var ok = confirm(
-      'Switch this device to ' + outletLabel(selected) + '?\n\n' +
-      'New Entry, IT Entry, Completed, and Problem PLUs will all switch to ' +
-      'showing that outlet\'s data. The Masterlist stays shared either way.'
-    );
-    if(!ok){
-      document.getElementById('adminOutletSelect').value = currentOutletPlant; // revert the dropdown
+    if(cart.length){
+      statusEl.innerHTML = '<div class="status err">New Entry still has ' + cart.length + ' unsent item(s) for ' + escapeHtml(outletLabel(currentOutletPlant)) +
+        '. Submit or clear that list first, otherwise it would be sent to the wrong outlet.</div>';
+      document.getElementById('adminOutletSelect').value = currentOutletPlant;
+      return;
+    }
+    if(outboxLoad().length){
+      statusEl.innerHTML = '<div class="status err">There are submissions still queued to send. Wait until they are sent, then change the outlet.</div>';
+      document.getElementById('adminOutletSelect').value = currentOutletPlant;
       return;
     }
 
+    showConfirmModal({
+      title: 'Change outlet?',
+      bodyHtml:
+        '<div style="font-size:15px;margin:6px 0 12px;"><b>' + escapeHtml(outletLabel(currentOutletPlant)) + '</b> &rarr; <b>' + escapeHtml(outletLabel(selected)) + '</b></div>' +
+        '<div class="pending-meta">This device will show and save data for the new outlet in New Entry, IT Entry, Completed and Problem PLUs. ' +
+        'Anything submitted afterwards is recorded under <b>' + escapeHtml(outletLabel(selected)) + '</b>. The Masterlist stays shared.</div>',
+      confirmLabel: 'Yes, switch outlet',
+      onConfirm: function(){ applyOutletChange(selected); },
+      onCancel: function(){ document.getElementById('adminOutletSelect').value = currentOutletPlant; }
+    });
+  }
+
+  function applyOutletChange(selected){
+    var statusEl = document.getElementById('outletSettingStatus');
     try {
       localStorage.setItem(OUTLET_STORAGE_KEY, selected);
     } catch (e) { /* storage unavailable — still applies for this page load */ }
@@ -2573,9 +2899,29 @@
     pendingDraft = {};
     selectedPendingCategory = null;
     selectedCompletedCategory = null;
+    lastPendingSig = null; lastProblemSig = null; lastCompletedSig = null;
 
     loadProblemPlus();
     loadAdminPendingList();
+  }
+
+  // Generic confirmation popup (styled, replaces the browser confirm()).
+  function showConfirmModal(o){
+    var old = document.getElementById('confirmModalOverlay');
+    if(old) old.parentNode.removeChild(old);
+    var overlay = document.createElement('div');
+    overlay.id = 'confirmModalOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
+    overlay.innerHTML =
+      '<div class="card" style="max-width:420px;width:100%;margin:0;">' +
+        '<h2 style="margin-top:0;">&#9888; ' + escapeHtml(o.title) + '</h2>' + o.bodyHtml +
+        '<button class="btn btn-full" id="confirmModalYes">' + escapeHtml(o.confirmLabel || 'Confirm') + '</button>' +
+        '<button class="btn ghost btn-full" id="confirmModalNo">Cancel</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    var close = function(){ overlay.parentNode.removeChild(overlay); };
+    document.getElementById('confirmModalYes').addEventListener('click', function(){ close(); if(o.onConfirm) o.onConfirm(); });
+    document.getElementById('confirmModalNo').addEventListener('click', function(){ close(); if(o.onCancel) o.onCancel(); });
   }
 
   // ---------- Admin: Add New Category ----------
@@ -2672,14 +3018,25 @@
   var problemPlus = [];
   var problemPluEditing = null; // plu code currently expanded for editing
 
-  function loadProblemPlus(){
-    document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
-    document.getElementById('problemPluEmpty').style.display = 'none';
+  var lastProblemSig = null;
 
-    sb.from('bad_stock_fresh_market').select('plu_code, quantity, description, staff, supervisor, entry_date').eq('status', 'unresolved').eq('plant', currentOutletPlant)
+  function loadProblemPlus(opts){
+    opts = opts || {};
+    var silent = !!opts.silent;
+    if(!silent){
+      document.getElementById('problemPluList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+      document.getElementById('problemPluEmpty').style.display = 'none';
+    }
+
+    return sb.from('bad_stock_fresh_market').select('plu_code, quantity, description, staff, supervisor, entry_date').eq('status', 'unresolved').eq('plant', currentOutletPlant)
       .order('entry_date', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
+        var sig = JSON.stringify(res.data);
+        if(silent && !opts.force && sig === lastProblemSig) return;
+        // Don't redraw underneath someone who has an edit form open.
+        if(silent && problemPluEditing !== null) return;
+        lastProblemSig = sig;
         var grouped = {};
         res.data.forEach(function(row){
           var key = String(row.plu_code).trim();
@@ -2701,6 +3058,7 @@
         renderProblemPlus();
       })
       .catch(function(err){
+        if(silent) throw err;
         document.getElementById('problemPluList').innerHTML =
           '<div class="status err">Failed to load problem PLUs: ' + err.message + '</div>';
       });
@@ -3054,7 +3412,7 @@
     document.getElementById('adminPendingList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('adminPendingEmpty').style.display = 'none';
 
-    getPendingEntriesFromSupabase()
+    return getPendingEntriesFromSupabase()
       .then(function(entries){
         adminPendingEntries = entries;
         renderAdminPendingList();
