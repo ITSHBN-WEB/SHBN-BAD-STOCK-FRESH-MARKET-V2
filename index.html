@@ -1450,6 +1450,55 @@
     });
   }
 
+  // ---------- New Entry: post-submit confirmation popup ----------
+  // Summarises what was just submitted: items per category, and how many
+  // PLUs were not in the masterlist (these go to IT Entry > Problem PLUs).
+  function buildSubmitSummary(items, staff, supervisor){
+    var perCat = {}, order = [], unmatched = 0, total = 0;
+    items.forEach(function(it){
+      total++;
+      if(!it.category){ unmatched++; return; }
+      if(!perCat[it.category]){ perCat[it.category] = { items: 0, qty: 0 }; order.push(it.category); }
+      perCat[it.category].items++;
+      perCat[it.category].qty += it.qty;
+    });
+    return { staff: staff, supervisor: supervisor, total: total, unmatched: unmatched, perCat: perCat, order: order };
+  }
+
+  function showSubmitSummary(sum, onClose){
+    var old = document.getElementById('submitSummaryOverlay');
+    if(old) old.parentNode.removeChild(old);
+
+    var rows = sum.order.map(function(c){
+      var r = sum.perCat[c];
+      return '<tr><td>' + escapeHtml(c) + '</td><td style="text-align:right;">' + r.items + '</td><td style="text-align:right;">' + (Math.round(r.qty * 100) / 100) + '</td></tr>';
+    }).join('');
+    if(sum.unmatched){
+      rows += '<tr style="background:var(--danger-soft);"><td>Not in masterlist</td><td style="text-align:right;">' + sum.unmatched + '</td><td style="text-align:right;">&mdash;</td></tr>';
+    }
+
+    var overlay = document.createElement('div');
+    overlay.id = 'submitSummaryOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
+    overlay.innerHTML =
+      '<div class="card" style="max-width:420px;width:100%;margin:0;max-height:90vh;overflow:auto;">' +
+        '<h2 style="margin-top:0;">&#10003; Submitted successfully</h2>' +
+        '<div class="pending-meta"><b>' + escapeHtml(sum.staff) + '</b> &middot; ' + escapeHtml(sum.supervisor) + '</div>' +
+        '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th><th style="text-align:right;">Total Qty</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>' +
+        '<div class="pending-meta" style="margin-top:10px;"><b>' + sum.total + '</b> item' + (sum.total === 1 ? '' : 's') + ' submitted</div>' +
+        (sum.unmatched
+          ? '<div class="status err" style="margin-top:10px;">' + sum.unmatched + ' PLU' + (sum.unmatched === 1 ? ' is' : 's are') + ' not in the masterlist. IT will review ' + (sum.unmatched === 1 ? 'it' : 'them') + ' before this can be printed.</div>'
+          : '') +
+        '<button class="btn btn-full" id="submitSummaryOk">OK</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.getElementById('submitSummaryOk').addEventListener('click', function(){
+      overlay.parentNode.removeChild(overlay);
+      if(onClose) onClose();
+    });
+  }
+
   function submitCart(){
     var statusEl = document.getElementById('submitStatus');
     if(!cart.length) return;
@@ -1457,18 +1506,21 @@
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
     document.getElementById('submitBtn').disabled = true;
 
+    // Build the summary from the cart BEFORE it is cleared.
+    var summary = buildSubmitSummary(cart, sessionStaff, sessionSupervisor);
+
     submitBadStockToSupabase(currentOutletPlant, sessionStaff, sessionSupervisor, cart)
       .then(function(res){
-        statusEl.innerHTML = '<div class="status ok">' + res.count + ' item(s) submitted successfully.</div>';
+        statusEl.innerHTML = '';
         cart = [];
         clearDraft();
         renderCart();
-        setTimeout(function(){
+        showSubmitSummary(summary, function(){
           document.getElementById('staffInput').value = '';
           document.getElementById('supervisorInput').value = '';
-          statusEl.innerHTML = '';
+          document.getElementById('submitBtn').disabled = false;
           backToStep1();
-        }, 1200);
+        });
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
