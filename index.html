@@ -2112,6 +2112,14 @@
       alert('A batch must have at least one item.');
       return;
     }
+    var it = pendingDraft[key].items[idx];
+    var ok = confirm(
+      'Remove this item?\n\n' +
+      (it.description || '(Not in Masterlist)') + '\n' +
+      'PLU ' + it.plu + ' \u00B7 Qty ' + it.qty + ' ' + (it.uom || '') + '\n\n' +
+      'It will be removed when you tap Save Changes or Submit.'
+    );
+    if(!ok) return;
     pendingDraft[key].items.splice(idx, 1);
     renderPendingListFiltered();
   }
