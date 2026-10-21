@@ -1542,10 +1542,10 @@
 
     var rows = sum.order.map(function(c){
       var r = sum.perCat[c];
-      return '<tr><td>' + escapeHtml(c) + '</td><td style="text-align:right;">' + r.items + '</td><td style="text-align:right;">' + (Math.round(r.qty * 100) / 100) + '</td></tr>';
+      return '<tr><td>' + escapeHtml(c) + '</td><td style="text-align:right;">' + r.items + '</td></tr>';
     }).join('');
     if(sum.unmatched){
-      rows += '<tr style="background:var(--danger-soft);"><td>Not in masterlist</td><td style="text-align:right;">' + sum.unmatched + '</td><td style="text-align:right;">&mdash;</td></tr>';
+      rows += '<tr style="background:var(--danger-soft);"><td>Not in masterlist</td><td style="text-align:right;">' + sum.unmatched + '</td></tr>';
     }
 
     var overlay = document.createElement('div');
@@ -1556,7 +1556,7 @@
         '<h2 style="margin-top:0;">' + (sum.queued ? '&#9203; Saved on this device' : '&#10003; Submitted successfully') + '</h2>' +
         (sum.queued ? '<div class="status err" style="margin:0 0 10px;">No connection. These items are stored safely and will be sent automatically when you are back online. Do not clear your browser data.</div>' : '') +
         '<div class="pending-meta"><b>' + escapeHtml(sum.staff) + '</b> &middot; ' + escapeHtml(sum.supervisor) + '</div>' +
-        '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th><th style="text-align:right;">Total Qty</th></tr></thead>' +
+        '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>' +
         '<div class="pending-meta" style="margin-top:10px;"><b>' + sum.total + '</b> item' + (sum.total === 1 ? '' : 's') + (sum.queued ? ' waiting to send' : ' submitted') + '</div>' +
         (sum.unmatched
@@ -1571,7 +1571,130 @@
     });
   }
 
+  // ---------- Large-quantity check before submitting ----------
+  // Any PLU whose total exceeds LARGE_QTY_LIMIT (20 EA / 20 KG) must be
+  // explicitly confirmed — or corrected — before the submit goes through.
+  var LARGE_QTY_LIMIT = 20;
+
   function submitCart(){
+    if(!cart.length) return;
+    var flagged = cart.some(function(it){ return it.qty > LARGE_QTY_LIMIT; });
+    if(!flagged){ doSubmitCart(); return; }
+    showLargeQtyConfirm(doSubmitCart);
+  }
+
+  function showLargeQtyConfirm(onProceed){
+    var old = document.getElementById('largeQtyOverlay');
+    if(old) old.parentNode.removeChild(old);
+
+    var confirmed = {};   // plu -> true once ticked
+    var editing = null;   // plu currently being edited
+
+    var overlay = document.createElement('div');
+    overlay.id = 'largeQtyOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:12px;z-index:9999;';
+    document.body.appendChild(overlay);
+
+    function flaggedItems(){ return cart.filter(function(it){ return it.qty > LARGE_QTY_LIMIT; }); }
+    function close(){ overlay.parentNode.removeChild(overlay); }
+
+    function render(){
+      var items = flaggedItems();
+      var allOk = items.every(function(it){ return confirmed[it.plu]; }) && editing === null;
+
+      var rows = items.map(function(it){
+        var isEd = editing === it.plu;
+        var uom = it.uom ? ' ' + escapeHtml(it.uom) : '';
+        var entriesTxt = it.entries.length > 1
+          ? '<div class="cart-sub">Entered: ' + it.entries.map(function(q){ return q; }).join(' + ') + '</div>'
+          : '';
+        var body;
+        if(isEd){
+          body =
+            '<div class="cart-entries"><span class="lbl">Edit:</span>' +
+              it.entries.map(function(q, ei){
+                return '<span class="entry-chip"><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + q + '" data-e="' + ei + '" class="lq-edit"></span>';
+              }).join('') +
+            '</div>' +
+            '<div class="btn-row" style="margin-top:8px;">' +
+              '<button class="btn" data-act="save" data-plu="' + escapeHtml(it.plu) + '">Save</button>' +
+              '<button class="btn ghost" data-act="cancel-edit">Cancel</button>' +
+            '</div>' +
+            '<div class="lq-err" style="color:var(--danger);font-size:12px;margin-top:6px;"></div>';
+        } else {
+          body =
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap;">' +
+              '<button class="btn secondary" style="margin-top:0;" data-act="change" data-plu="' + escapeHtml(it.plu) + '">Change</button>' +
+              '<label style="display:flex;align-items:center;gap:8px;margin:0;text-transform:none;font-size:13.5px;color:var(--text);cursor:pointer;">' +
+                '<input type="checkbox" style="width:20px;height:20px;" data-act="tick" data-plu="' + escapeHtml(it.plu) + '"' + (confirmed[it.plu] ? ' checked' : '') + '> Quantity is correct' +
+              '</label>' +
+            '</div>';
+        }
+        return '<div class="cart-item">' +
+          '<div class="cart-top">' +
+            '<div style="min-width:0;"><div class="cart-desc">' + (it.description ? escapeHtml(it.description) : '(Not in Masterlist)') + '</div>' +
+            '<div class="cart-sub">PLU ' + escapeHtml(it.plu) + '</div>' + entriesTxt + '</div>' +
+            '<div class="cart-total"><small>Total</small><b>' + it.qty + uom + '</b></div>' +
+          '</div>' + body +
+        '</div>';
+      }).join('');
+
+      overlay.innerHTML =
+        '<div class="card" style="max-width:460px;width:100%;margin:0;max-height:92vh;overflow:auto;">' +
+          '<h2 style="margin-top:0;">&#9888; Please check these quantities</h2>' +
+          '<div class="pending-meta">Quantities above <b>' + LARGE_QTY_LIMIT + '</b> need your confirmation. Tick each one if correct, or tap Change to fix it.</div>' +
+          (rows || '<div class="status ok" style="margin-top:10px;">All quantities are now within the limit.</div>') +
+          '<button class="btn btn-full" data-act="go"' + (allOk ? '' : ' disabled') + '>Confirm &amp; Submit</button>' +
+          '<button class="btn ghost btn-full" data-act="back">Back to list</button>' +
+        '</div>';
+    }
+
+    overlay.addEventListener('click', function(e){
+      var t = e.target;
+      var act = t.getAttribute && t.getAttribute('data-act');
+      if(!act) return;
+      var plu = t.getAttribute('data-plu');
+
+      if(act === 'tick'){
+        confirmed[plu] = t.checked;
+        render();
+      } else if(act === 'change'){
+        editing = plu; render();
+      } else if(act === 'cancel-edit'){
+        editing = null; render();
+      } else if(act === 'save'){
+        var item = cart.find(function(c){ return c.plu === plu; });
+        var inputs = overlay.querySelectorAll('.lq-edit');
+        var vals = [];
+        for(var i = 0; i < inputs.length; i++){
+          var v = parseFloat(inputs[i].value);
+          if(!v || v <= 0 || v > MAX_QTY){
+            overlay.querySelector('.lq-err').textContent = 'Each quantity must be between 0.01 and ' + MAX_QTY + '.';
+            return;
+          }
+          vals.push(roundQty(v));
+        }
+        item.entries = vals;
+        item.qty = roundQty(vals.reduce(function(sum, q){ return sum + q; }, 0));
+        confirmed[plu] = false; // changed: needs a fresh confirmation if still large
+        editing = null;
+        renderCart();
+        saveDraft();
+        render();
+      } else if(act === 'back'){
+        close();
+      } else if(act === 'go'){
+        if(flaggedItems().every(function(it){ return confirmed[it.plu]; })){
+          close();
+          onProceed();
+        }
+      }
+    });
+
+    render();
+  }
+
+  function doSubmitCart(){
     var statusEl = document.getElementById('submitStatus');
     if(!cart.length) return;
 
@@ -1715,7 +1838,7 @@
   function overlayOpen(){
     var b = document.getElementById('busyOverlay');
     if(b && b.style.display !== 'none') return true;
-    return !!document.getElementById('submitSummaryOverlay') || !!document.getElementById('confirmModalOverlay');
+    return !!document.getElementById('submitSummaryOverlay') || !!document.getElementById('confirmModalOverlay') || !!document.getElementById('largeQtyOverlay');
   }
 
   function updateSyncUi(){
