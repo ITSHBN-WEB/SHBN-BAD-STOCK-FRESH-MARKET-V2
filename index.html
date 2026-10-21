@@ -2332,11 +2332,27 @@
       '</div>' +
       '</body></html>';
 
-    var win = window.open('', '_blank');
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    setTimeout(function(){ win.focus(); win.print(); }, 300);
+    // Print from a hidden iframe so the browser's print dialog opens right
+    // here in the current tab — no extra tab to open and close afterwards.
+    var old = document.getElementById('printFrame');
+    if(old) old.parentNode.removeChild(old);
+    var frame = document.createElement('iframe');
+    frame.id = 'printFrame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(frame);
+    var fdoc = frame.contentWindow.document;
+    fdoc.open();
+    fdoc.write(html);
+    fdoc.close();
+    setTimeout(function(){
+      try{
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+      }catch(e){
+        alert('Could not open the print dialog: ' + e.message);
+      }
+    }, 300);
   }
 
   // ================= ADMIN =================
