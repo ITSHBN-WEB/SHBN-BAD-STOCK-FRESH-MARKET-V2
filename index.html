@@ -107,6 +107,28 @@
     td input[type=number]{width:70px;padding:6px 8px;}
     .qty-cell{display:flex;align-items:center;gap:6px;}
     .remove-btn{color:var(--danger);cursor:pointer;font-size:16px;font-weight:700;}
+    /* New Entry preview: one block per PLU (works at any screen width) */
+    .cart-item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--panel);}
+    .cart-item.unmatched{background:var(--danger-soft);}
+    .cart-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+    .cart-desc{font-weight:700;font-size:14px;word-break:break-word;min-width:0;}
+    .cart-sub{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-word;}
+    .cart-total{text-align:right;flex-shrink:0;}
+    .cart-total small{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px;}
+    .cart-total b{font-size:18px;}
+    .cart-entries{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;}
+    .cart-entries .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px;margin-right:2px;}
+    .entry-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);background:var(--input-bg);border-radius:8px;padding:2px 6px;}
+    .entry-chip input[type=number]{width:62px;padding:4px 6px;font-size:13px;border:none;background:transparent;}
+    .entry-chip .remove-btn{font-size:15px;line-height:1;padding:0 2px;}
+    @media (max-width:520px){
+      body{padding:14px 8px 50px;}
+      .card{padding:14px 12px;}
+      table{font-size:12px;}
+      th,td{padding:6px 5px;}
+      td input[type=number]{width:58px;padding:5px 6px;}
+      th{font-size:10px;}
+    }
 
     .status{font-size:13px;margin-top:10px;padding:9px 12px;border-radius:8px;}
     .status.ok{background:var(--accent-soft);color:var(--accent);}
@@ -231,14 +253,9 @@
       </div>
 
       <div class="card">
-        <h2><span class="step-badge">3</span> Preview (<span id="cartCount">0</span> item<span id="cartCountPlural">s</span>)</h2>
+        <h2><span class="step-badge">3</span> <span>Preview (<span id="cartCount">0</span> item<span id="cartCountPlural">s</span>)</span></h2>
         <div id="cartEmpty" class="empty">No items added yet.</div>
-        <table id="cartTable" style="display:none;">
-          <thead>
-            <tr><th>Description</th><th>PLU</th><th>Category</th><th>UOM</th><th>Qty</th><th></th></tr>
-          </thead>
-          <tbody id="cartBody"></tbody>
-        </table>
+        <div id="cartTable" style="display:none;"></div>
 
         <button class="btn btn-full" id="submitBtn" onclick="submitCart()" disabled>Submit All</button>
         <div id="submitStatus"></div>
@@ -1384,7 +1401,9 @@
     if(existing){
       // Duplicate PLU: quantities add up, rounded back to 2 decimals — not
       // re-capped at 99.99, since a legitimate running total can exceed it.
-      existing.qty = roundQty(existing.qty + qty);
+      if(!existing.entries || !existing.entries.length) existing.entries = [existing.qty];
+      existing.entries.push(qty);
+      existing.qty = roundQty(existing.entries.reduce(function(sum, q){ return sum + q; }, 0));
     } else {
       cart.push({
         plu: currentLookup.plu,
@@ -1393,6 +1412,7 @@
         uom: currentLookup.uom,
         category: currentLookup.category || null,
         qty: qty,
+        entries: [qty],
         unmatched: !!currentLookup.unmatched
       });
     }
@@ -1411,66 +1431,90 @@
   }
 
   function renderCart(){
-    var tbody = document.getElementById('cartBody');
     var table = document.getElementById('cartTable');
     var emptyEl = document.getElementById('cartEmpty');
     var submitBtn = document.getElementById('submitBtn');
+
+    // Older saved drafts have no per-scan list — treat their qty as one entry.
+    cart.forEach(function(it){
+      if(!it.entries || !it.entries.length) it.entries = [it.qty];
+    });
 
     document.getElementById('cartCount').textContent = cart.length;
     document.getElementById('cartCountPlural').textContent = cart.length === 1 ? '' : 's';
 
     if(!cart.length){
       table.style.display = 'none';
+      table.innerHTML = '';
       emptyEl.style.display = 'block';
       submitBtn.disabled = true;
       return;
     }
 
     emptyEl.style.display = 'none';
-    table.style.display = 'table';
+    table.style.display = 'block';
     submitBtn.disabled = false;
 
-    tbody.innerHTML = '';
-    cart.forEach(function(item, idx){
-      var tr = document.createElement('tr');
-      if(item.unmatched) tr.style.background = 'var(--danger-soft)';
+    // One block per PLU: description, PLU/category/UOM, the TOTAL qty, and
+    // every individual quantity that was entered for it (each editable /
+    // removable). Only the total is what gets submitted and later shown
+    // to IT in the pending list.
+    table.innerHTML = cart.map(function(item, idx){
       var descDisplay = item.description ? escapeHtml(item.description) : '<span style="color:var(--danger);">(Not in Masterlist)</span>';
-      var uomDisplay = item.uom ? escapeHtml(item.uom) : '—';
-      var catDisplay = item.category ? escapeHtml(item.category) : '—';
-      tr.innerHTML =
-        '<td>' + descDisplay + '</td>' +
-        '<td>' + escapeHtml(item.plu) + '</td>' +
-        '<td>' + catDisplay + '</td>' +
-        '<td>' + uomDisplay + '</td>' +
-        '<td><div class="qty-cell"><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + item.qty + '" data-idx="' + idx + '" class="qty-edit"></div></td>' +
-        '<td><span class="remove-btn" data-idx="' + idx + '">&times;</span></td>';
-      tbody.appendChild(tr);
-    });
+      var chips = item.entries.map(function(q, ei){
+        return '<span class="entry-chip">' +
+          '<input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + q + '" data-idx="' + idx + '" data-e="' + ei + '" class="qty-edit">' +
+          '<span class="remove-btn" data-idx="' + idx + '" data-e="' + ei + '" title="Remove this entry">&times;</span>' +
+        '</span>';
+      }).join('');
+      return '<div class="cart-item' + (item.unmatched ? ' unmatched' : '') + '">' +
+        '<div class="cart-top">' +
+          '<div style="min-width:0;">' +
+            '<div class="cart-desc">' + descDisplay + '</div>' +
+            '<div class="cart-sub">PLU ' + escapeHtml(item.plu) + ' &middot; ' + (item.category ? escapeHtml(item.category) : 'No category') + ' &middot; ' + (item.uom ? escapeHtml(item.uom) : '\u2014') + '</div>' +
+          '</div>' +
+          '<div class="cart-total"><small>Total' + (item.entries.length > 1 ? ' (' + item.entries.length + ' entries)' : '') + '</small><b>' + item.qty + '</b></div>' +
+        '</div>' +
+        '<div class="cart-entries"><span class="lbl">Entered:</span>' + chips + '</div>' +
+      '</div>';
+    }).join('');
 
-    tbody.querySelectorAll('.qty-edit').forEach(function(input){
+    var recalc = function(it){
+      it.qty = roundQty(it.entries.reduce(function(sum, q){ return sum + q; }, 0));
+    };
+
+    table.querySelectorAll('.qty-edit').forEach(function(input){
       input.addEventListener('change', function(){
         var idx = parseInt(input.dataset.idx, 10);
+        var ei = parseInt(input.dataset.e, 10);
         var val = parseFloat(input.value);
         if(!val || val <= 0){
-          input.value = cart[idx].qty;
+          input.value = cart[idx].entries[ei];
           return;
         }
         if(val > MAX_QTY){
           alert('Maximum quantity allowed is ' + MAX_QTY + '.');
-          input.value = cart[idx].qty;
+          input.value = cart[idx].entries[ei];
           return;
         }
-        val = roundQty(val);
-        cart[idx].qty = val;
-        input.value = val;
+        cart[idx].entries[ei] = roundQty(val);
+        recalc(cart[idx]);
+        renderCart();
         saveDraft();
       });
     });
 
-    tbody.querySelectorAll('.remove-btn').forEach(function(btn){
+    table.querySelectorAll('.remove-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
         var idx = parseInt(btn.dataset.idx, 10);
-        cart.splice(idx, 1);
+        var ei = parseInt(btn.dataset.e, 10);
+        var it = cart[idx];
+        if(it.entries.length > 1){
+          it.entries.splice(ei, 1);
+          recalc(it);
+        } else {
+          cart.splice(idx, 1); // last entry for this PLU: drop the whole item
+        }
         renderCart();
         saveDraft();
       });
