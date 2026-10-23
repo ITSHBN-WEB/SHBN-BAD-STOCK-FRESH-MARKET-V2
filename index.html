@@ -260,7 +260,7 @@
     <div class="dashboard-welcome">
       <div>
         <div class="welcome-eyebrow">SHBN · BAD STOCK MANAGEMENT</div>
-        <h2 class="welcome-title">Good morning, welcome back.</h2>
+        <h2 class="welcome-title" id="dashboardGreeting">Welcome back.</h2>
         <p class="welcome-copy">Here is your outlet overview. Choose an action to get started.</p>
       </div>
       <div class="welcome-date" id="dashboardDate"></div>
@@ -1247,9 +1247,6 @@
     document.getElementById('itTabView').style.display = tab === 'it' ? 'block' : 'none';
     document.getElementById('adminTabView').style.display = tab === 'admin' ? 'block' : 'none';
 
-    document.getElementById('tabBtnNew').classList.toggle('active', tab === 'new');
-    document.getElementById('tabBtnIt').classList.toggle('active', tab === 'it');
-    document.getElementById('tabBtnAdmin').classList.toggle('active', tab === 'admin');
     ['Home','New','It','Admin'].forEach(function(name){
       var key = name.toLowerCase();
       var el = document.getElementById('sideBtn' + name);
@@ -1329,6 +1326,12 @@
   function refreshHomeDashboard(){
     var dateEl = document.getElementById('dashboardDate');
     if(dateEl) dateEl.textContent = new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'short',day:'numeric'});
+    var greetEl = document.getElementById('dashboardGreeting');
+    if(greetEl){
+      // Uses the device's local time: morning until 11:59, afternoon until 17:59, evening after.
+      var h = new Date().getHours();
+      greetEl.textContent = (h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening')) + ', welcome back.';
+    }
     updateHomeCounts(); renderHomeCategories(); renderHomeRecentActivity();
   }
 
