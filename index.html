@@ -177,12 +177,66 @@
     }
     .pending-cat-empty{color:var(--muted);font-size:12.5px;margin-top:4px;}
     .back-link{color:var(--secondary);cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;margin-bottom:14px;}
+
+    /* Premium burgundy responsive app shell */
+    :root{--bg:#f5f1eb;--panel:#fff;--panel-soft:#faf6f1;--border:#e8ddd2;--text:#302522;--muted:#8b7770;--accent:#702b32;--accent-soft:rgba(112,43,50,.09);--accent-dark:#501d24;--secondary:#a98250;--secondary-soft:rgba(169,130,80,.12);--danger:#b43c46;--danger-soft:rgba(180,60,70,.10);--input-bg:#fcf9f5;--sidebar:#321c28;--sidebar-hover:#4a2938;}
+    body{padding:0 0 40px;background:var(--bg);}
+    .app-sidebar{position:fixed;z-index:50;left:0;top:0;bottom:0;width:76px;background:var(--sidebar);color:#fff;display:flex;flex-direction:column;padding:18px 12px;overflow:hidden;transition:width .24s ease,box-shadow .24s ease;box-shadow:4px 0 20px rgba(45,25,34,.06)}
+    .app-sidebar:hover,.app-sidebar.pinned{width:246px;box-shadow:8px 0 28px rgba(45,25,34,.15)}
+    .sidebar-brand{height:48px;display:flex;align-items:center;gap:12px;padding:0 7px;margin-bottom:28px;white-space:nowrap;overflow:hidden}
+    .sidebar-logo{width:42px;height:42px;min-width:42px;border-radius:12px;background:#8b3b43;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;letter-spacing:.4px}
+    .sidebar-brand-copy{opacity:0;transition:opacity .15s ease;white-space:nowrap}.app-sidebar:hover .sidebar-brand-copy,.app-sidebar.pinned .sidebar-brand-copy{opacity:1}
+    .sidebar-brand-copy b{display:block;font-size:14px}.sidebar-brand-copy span{display:block;color:#cdb9bf;font-size:10px;letter-spacing:1.2px;margin-top:3px}
+    .sidebar-section{font-size:10px;font-weight:800;letter-spacing:1.4px;color:#bda7b0;padding:0 12px;margin:0 0 10px;white-space:nowrap;opacity:0;transition:opacity .15s}.app-sidebar:hover .sidebar-section,.app-sidebar.pinned .sidebar-section{opacity:1}
+    .sidebar-nav{display:flex;flex-direction:column;gap:7px}
+    .sidebar-link{width:100%;height:46px;min-height:46px;border:0;border-radius:11px;background:transparent;color:#e8dce1;display:flex;align-items:center;gap:14px;padding:0 13px;cursor:pointer;font:600 13px inherit;text-align:left;white-space:nowrap;overflow:hidden;transition:background .18s,color .18s}
+    .sidebar-link:hover{background:var(--sidebar-hover);color:#fff}.sidebar-link.active{background:#8b3b43;color:#fff;box-shadow:0 5px 14px rgba(0,0,0,.12)}
+    .sidebar-icon{width:24px;min-width:24px;text-align:center;font-size:18px;line-height:1}.sidebar-label{opacity:0;transition:opacity .15s ease}.app-sidebar:hover .sidebar-label,.app-sidebar.pinned .sidebar-label{opacity:1}
+    .sidebar-spacer{flex:1}.sidebar-pin{height:42px;width:100%;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#f4e8ec;border-radius:10px;display:flex;align-items:center;gap:13px;padding:0 13px;cursor:pointer;white-space:nowrap}.sidebar-pin .sidebar-label{font-size:12px}
+    .app-main{margin-left:76px;min-height:100vh;transition:margin-left .24s ease}.app-sidebar.pinned~.app-main{margin-left:246px}
+    .topbar{position:sticky;top:0;z-index:30;background:linear-gradient(110deg,#55212c,#7a343e);color:#fff;padding:17px clamp(18px,4vw,48px);min-height:76px;display:flex;align-items:center;justify-content:space-between;gap:18px;box-shadow:0 3px 14px rgba(65,29,38,.14);margin-bottom:0}
+    .topbar .brand{flex:1 1 auto}.topbar .brand-mark{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.18);border-radius:12px}.topbar h1{color:#fff;font-size:19px}.topbar p{color:#e3cbd0}.topbar .sync-box{color:#f0dfe3}.topbar .sync-btn{background:#fff;color:#54242d;border-color:rgba(255,255,255,.5)}.topbar .tabs{display:none}
+    .wrap{max-width:1440px;width:100%;margin:0 auto;padding:24px clamp(16px,4vw,48px) 48px}
+    .outlet-notice{margin-bottom:22px;background:#eaded8;border-color:#e3d0c8;color:var(--accent)}
+    .card{border-radius:15px;box-shadow:0 5px 18px rgba(62,40,34,.035);padding:22px;margin-bottom:18px}
+    .card h2{font-size:13px;letter-spacing:.7px}
+    .dashboard-welcome{background:linear-gradient(120deg,#fff 0%,#fbf3ef 100%);border:1px solid var(--border);border-radius:18px;padding:26px 28px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:20px;position:relative;overflow:hidden}
+    .dashboard-welcome:after{content:"";position:absolute;width:220px;height:220px;border-radius:50%;right:-80px;top:-120px;background:rgba(112,43,50,.06);pointer-events:none}
+    .welcome-eyebrow{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--secondary);font-weight:800;margin-bottom:8px}.welcome-title{font-size:clamp(24px,3vw,34px);font-weight:750;letter-spacing:-.8px;color:#39232a;margin:0 0 7px}.welcome-copy{font-size:14px;color:var(--muted);margin:0}.welcome-date{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap;z-index:1}
+    .dashboard-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:20px}
+    .stat-card{border:1px solid var(--border);border-radius:16px;background:#fff;padding:20px 22px;display:flex;align-items:center;gap:16px;min-width:0;box-shadow:0 4px 14px rgba(62,40,34,.025)}
+    .stat-icon{width:50px;height:50px;min-width:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;background:#f4e7e5;color:var(--accent)}.stat-icon.problem{background:#fff0e5;color:#a54b30}.stat-label{font-size:12px;color:var(--muted);font-weight:650;margin-bottom:5px}.stat-value{font-size:30px;line-height:1.1;font-weight:800;color:#39232a;letter-spacing:-.7px}.stat-sub{font-size:11px;color:var(--muted);margin-top:5px}
+    .dashboard-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px;align-items:start}
+    .new-entry-launch{display:block;width:100%;border:1px solid #e5d1cc;background:linear-gradient(135deg,#fff 0%,#fbf3f0 100%);border-radius:16px;padding:22px;text-align:left;cursor:pointer;color:inherit;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;font-family:inherit}
+    .new-entry-launch:hover{transform:translateY(-2px);border-color:#c89a9d;box-shadow:0 12px 25px rgba(91,37,47,.09)}.launch-top{display:flex;align-items:center;gap:14px}.launch-icon{width:54px;height:54px;min-width:54px;display:flex;align-items:center;justify-content:center;border-radius:15px;background:#702b32;color:#fff;font-size:25px}.launch-copy{flex:1;min-width:0}.launch-copy strong{display:block;font-size:17px;color:#47232b;margin-bottom:5px}.launch-copy span{font-size:12.5px;color:var(--muted)}.launch-arrow{font-size:22px;color:var(--accent)}.launch-cta{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;background:var(--accent);color:#fff;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:750}.dashboard-panel{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px 22px;box-shadow:0 4px 14px rgba(62,40,34,.025);min-width:0}.dashboard-panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px}.dashboard-panel-head h2{font-size:13px;color:#47232b;margin:0;text-transform:uppercase;letter-spacing:.6px}.dashboard-link{border:0;background:transparent;color:var(--accent);font:700 12px inherit;cursor:pointer}.activity-list{display:flex;flex-direction:column;gap:0}.activity-row{display:flex;align-items:flex-start;gap:11px;padding:12px 0;border-bottom:1px solid #f0e8e2}.activity-row:last-child{border-bottom:0;padding-bottom:0}.activity-dot{width:9px;height:9px;min-width:9px;border-radius:50%;background:#a98250;margin-top:5px}.activity-main{flex:1;min-width:0}.activity-title{font-size:12.5px;font-weight:700;color:#4a3433;overflow-wrap:anywhere}.activity-meta{font-size:11px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.activity-count{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:3px 7px;white-space:nowrap}.dashboard-categories{display:flex;flex-wrap:wrap;gap:8px}.dashboard-category{border:1px solid var(--border);background:#fbf7f2;border-radius:9px;padding:9px 11px;font-size:12px;color:#5b443d;font-weight:650}.dashboard-footnote{font-size:11px;color:var(--muted);margin-top:15px}
+    .page-heading{margin:0 0 16px;font-size:20px;color:#43242c;letter-spacing:-.3px}
+    .tabs{flex-wrap:wrap}
+    @media(max-width:800px){.dashboard-grid{grid-template-columns:1fr}.topbar{padding:14px 18px}.topbar p{max-width:62vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.welcome-date{display:none}}
+    @media(max-width:560px){.app-sidebar{width:62px;padding:14px 8px}.app-sidebar:hover,.app-sidebar.pinned{width:min(246px,84vw)}.app-main{margin-left:62px}.app-sidebar.pinned~.app-main{margin-left:62px}.wrap{padding:16px 12px 36px}.topbar{padding:13px 12px;min-height:68px}.topbar .brand{gap:9px}.topbar .brand-mark{width:35px;height:35px}.topbar h1{font-size:15px}.topbar p{font-size:9px;letter-spacing:.2px}.topbar .sync-box{font-size:10px;gap:4px}.topbar .sync-btn{font-size:10px;padding:4px 6px}.dashboard-welcome{padding:20px 18px}.dashboard-stats{gap:10px}.stat-card{padding:14px 12px;gap:10px;align-items:flex-start}.stat-icon{width:38px;height:38px;min-width:38px;border-radius:11px;font-size:18px}.stat-value{font-size:25px}.stat-label{font-size:11px}.stat-sub{font-size:10px}.dashboard-panel{padding:17px 15px}.new-entry-launch{padding:18px 15px}.card{padding:16px 13px}}
+    @media(prefers-reduced-motion:reduce){.app-sidebar,.app-main,.new-entry-launch{transition:none}}
+
   </style>
 </head>
 <body>
+<aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
+  <div class="sidebar-brand">
+    <div class="sidebar-logo">BS</div>
+    <div class="sidebar-brand-copy"><b>SHBN</b><span>BAD STOCK LOG</span></div>
+  </div>
+  <div class="sidebar-section">WORKSPACE</div>
+  <nav class="sidebar-nav">
+    <button class="sidebar-link active" id="sideBtnHome" onclick="showTab('home')" title="Home"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Home</span></button>
+    <button class="sidebar-link" id="sideBtnNew" onclick="showTab('new')" title="New Entry"><span class="sidebar-icon">＋</span><span class="sidebar-label">New Entry</span></button>
+    <button class="sidebar-link" id="sideBtnIt" onclick="showTab('it')" title="IT Entry"><span class="sidebar-icon">▤</span><span class="sidebar-label">IT Entry</span></button>
+    <button class="sidebar-link" id="sideBtnAdmin" onclick="showTab('admin')" title="Admin"><span class="sidebar-icon">⚙</span><span class="sidebar-label">Admin</span></button>
+  </nav>
+  <div class="sidebar-spacer"></div>
+  <button class="sidebar-pin" id="sidebarPinBtn" onclick="toggleSidebarPin()" aria-pressed="false" title="Pin sidebar open"><span class="sidebar-icon">📌</span><span class="sidebar-label" id="sidebarPinLabel">Pin sidebar open</span></button>
+</aside>
+<main class="app-main" id="appMain">
 <div class="wrap">
 
-  <header>
+  <header class="topbar">
     <div class="brand">
       <div class="brand-mark">BS</div>
       <div class="brand-text">
@@ -196,14 +250,47 @@
         <p id="categorySubtitle">Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
       </div>
     </div>
-    <nav class="tabs">
-      <button id="tabBtnNew" class="active" onclick="showTab('new')">New Entry</button>
-      <button id="tabBtnIt" onclick="showTab('it')">IT Entry</button>
-      <button id="tabBtnAdmin" onclick="showTab('admin')">Admin</button>
-    </nav>
+    <nav class="tabs top-tabs" aria-hidden="true"></nav>
   </header>
 
   <div id="outletNotice" class="outlet-notice"></div>
+
+  <!-- ============ HOME DASHBOARD ============ -->
+  <section id="homeTabView" style="display:none;">
+    <div class="dashboard-welcome">
+      <div>
+        <div class="welcome-eyebrow">SHBN · BAD STOCK MANAGEMENT</div>
+        <h2 class="welcome-title">Good morning, welcome back.</h2>
+        <p class="welcome-copy">Here is your outlet overview. Choose an action to get started.</p>
+      </div>
+      <div class="welcome-date" id="dashboardDate"></div>
+    </div>
+
+    <div class="dashboard-stats">
+      <div class="stat-card" role="button" tabindex="0" onclick="openDashboardSection('it','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','pending');}">
+        <div class="stat-icon">◷</div><div><div class="stat-label">Pending transactions</div><div class="stat-value" id="homePendingCount">—</div><div class="stat-sub">Waiting for IT processing · View pending →</div></div>
+      </div>
+      <div class="stat-card" role="button" tabindex="0" onclick="openDashboardSection('it','problem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','problem');}">
+        <div class="stat-icon problem">⚠</div><div><div class="stat-label">Problem PLUs</div><div class="stat-value" id="homeProblemCount">—</div><div class="stat-sub">Items requiring masterlist details · Review →</div></div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <button class="new-entry-launch" type="button" onclick="showTab('new')" aria-label="Go to New Entry">
+        <div class="launch-top"><div class="launch-icon">＋</div><div class="launch-copy"><strong>New Entry</strong><span>Record a new bad stock item and submit it for processing.</span></div><span class="launch-arrow">→</span></div>
+        <div class="launch-cta">Start a new entry <span>→</span></div>
+      </button>
+      <div class="dashboard-panel">
+        <div class="dashboard-panel-head"><h2>Recent activity</h2><button class="dashboard-link" onclick="showTab('it')">Open IT Entry →</button></div>
+        <div id="homeRecentActivity" class="activity-list"><div class="empty">Loading recent activity…</div></div>
+      </div>
+      <div class="dashboard-panel">
+        <div class="dashboard-panel-head"><h2>Bad stock categories</h2><button class="dashboard-link" onclick="showTab('new')">New Entry →</button></div>
+        <div id="homeCategories" class="dashboard-categories"><span class="dashboard-category">Loading categories…</span></div>
+        <div class="dashboard-footnote">Categories are shared with the outlet masterlist.</div>
+      </div>
+    </div>
+  </section>
 
   <!-- Loading state while masterlist loads -->
   <div id="loadingView" class="card">
@@ -387,6 +474,7 @@
   </div>
 
 </div>
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -1017,6 +1105,8 @@
 
   // ---------- Startup: load masterlist once, cache client-side ----------
   window.addEventListener('DOMContentLoaded', function(){
+    applySidebarPreference();
+    refreshHomeDashboard();
     getMasterlistFromSupabase()
       .then(function(list){
         masterlist = list;
@@ -1108,11 +1198,15 @@
       .then(function(categories){
         appCategories = categories;
         updateCategorySubtitle();
+        renderHomeCategories();
         applyOutletBranding();
         document.getElementById('loadingView').style.display = 'none';
         lastSyncAt = Date.now();
         nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
-        showTab('new');
+        showTab('home');
+        refreshHomeDashboard();
+        loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+        loadProblemPlus({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
         flushOutbox();
 
         var draft = loadDraft();
@@ -1148,6 +1242,7 @@
   // ---------- Tab switching ----------
   function showTab(tab){
     currentTab = tab;
+    document.getElementById('homeTabView').style.display = tab === 'home' ? 'block' : 'none';
     document.getElementById('newTabView').style.display = tab === 'new' ? 'block' : 'none';
     document.getElementById('itTabView').style.display = tab === 'it' ? 'block' : 'none';
     document.getElementById('adminTabView').style.display = tab === 'admin' ? 'block' : 'none';
@@ -1155,9 +1250,86 @@
     document.getElementById('tabBtnNew').classList.toggle('active', tab === 'new');
     document.getElementById('tabBtnIt').classList.toggle('active', tab === 'it');
     document.getElementById('tabBtnAdmin').classList.toggle('active', tab === 'admin');
-
-    if(tab === 'it'){ loadPendingEntries().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); }); }
+    ['Home','New','It','Admin'].forEach(function(name){
+      var key = name.toLowerCase();
+      var el = document.getElementById('sideBtn' + name);
+      if(el) el.classList.toggle('active', key === tab);
+    });
+    if(tab === 'it'){
+      loadPendingEntries().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
+      if(itEntrySubView === 'problem') loadProblemPlus({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+    }
+    if(tab === 'home') refreshHomeDashboard();
     updateSyncUi();
+  }
+
+  var SIDEBAR_PIN_KEY = 'shbn_bad_stock_sidebar_pinned_v1';
+  function applySidebarPreference(){
+    var sidebar = document.getElementById('appSidebar');
+    var btn = document.getElementById('sidebarPinBtn');
+    var label = document.getElementById('sidebarPinLabel');
+    var pinned = false;
+    try { pinned = localStorage.getItem(SIDEBAR_PIN_KEY) === '1'; } catch(e) {}
+    sidebar.classList.toggle('pinned', pinned);
+    if(btn){ btn.setAttribute('aria-pressed', pinned ? 'true' : 'false'); btn.title = pinned ? 'Unpin sidebar' : 'Pin sidebar open'; }
+    if(label) label.textContent = pinned ? 'Unpin sidebar' : 'Pin sidebar open';
+  }
+  function toggleSidebarPin(){
+    var sidebar = document.getElementById('appSidebar');
+    var pinned = !sidebar.classList.contains('pinned');
+    sidebar.classList.toggle('pinned', pinned);
+    try { localStorage.setItem(SIDEBAR_PIN_KEY, pinned ? '1' : '0'); } catch(e) {}
+    var btn = document.getElementById('sidebarPinBtn');
+    var label = document.getElementById('sidebarPinLabel');
+    if(btn){ btn.setAttribute('aria-pressed', pinned ? 'true' : 'false'); btn.title = pinned ? 'Unpin sidebar' : 'Pin sidebar open'; }
+    if(label) label.textContent = pinned ? 'Unpin sidebar' : 'Pin sidebar open';
+  }
+  function openDashboardSection(tab, subview){
+    showTab(tab);
+    if(tab === 'it' && subview){ switchItSubView(subview); }
+  }
+  function updateHomeCounts(){
+    var pending = document.getElementById('homePendingCount');
+    var problem = document.getElementById('homeProblemCount');
+    if(pending) pending.textContent = String(pendingEntries.length || 0);
+    if(problem) problem.textContent = String(problemPlus.length || 0);
+  }
+  function renderHomeCategories(){
+    var container = document.getElementById('homeCategories');
+    if(!container) return;
+    container.innerHTML = '';
+    if(!appCategories.length){ container.innerHTML = '<span class="dashboard-category">No categories found</span>'; return; }
+    appCategories.forEach(function(category){
+      var chip = document.createElement('span');
+      chip.className = 'dashboard-category';
+      chip.textContent = category;
+      container.appendChild(chip);
+    });
+  }
+  function renderHomeRecentActivity(){
+    var container = document.getElementById('homeRecentActivity');
+    if(!container) return;
+    container.innerHTML = '';
+    var rows = (pendingEntries || []).slice().sort(function(a,b){
+      return String(b.entryDate || b.dateDisplay || '').localeCompare(String(a.entryDate || a.dateDisplay || ''));
+    }).slice(0,4);
+    if(!rows.length){ container.innerHTML = '<div class="empty">No pending activity to show.</div>'; return; }
+    rows.forEach(function(batch){
+      var row = document.createElement('div'); row.className = 'activity-row';
+      var dot = document.createElement('span'); dot.className = 'activity-dot';
+      var main = document.createElement('div'); main.className = 'activity-main';
+      var title = document.createElement('div'); title.className = 'activity-title'; title.textContent = batch.category || 'Bad stock transaction';
+      var meta = document.createElement('div'); meta.className = 'activity-meta';
+      meta.textContent = (batch.dateDisplay || batch.entryDate || 'Pending') + ' · ' + (batch.staff || 'Staff not listed');
+      main.appendChild(title); main.appendChild(meta);
+      var count = document.createElement('span'); count.className = 'activity-count'; count.textContent = (batch.items ? batch.items.length : 0) + ' item(s)';
+      row.appendChild(dot); row.appendChild(main); row.appendChild(count); container.appendChild(row);
+    });
+  }
+  function refreshHomeDashboard(){
+    var dateEl = document.getElementById('dashboardDate');
+    if(dateEl) dateEl.textContent = new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'short',day:'numeric'});
+    updateHomeCounts(); renderHomeCategories(); renderHomeRecentActivity();
   }
 
   // ================= NEW ENTRY =================
@@ -1827,7 +1999,7 @@
   var syncFailed = false;
   var syncNote = '';
   var syncNoteUntil = 0;
-  var currentTab = 'new';
+  var currentTab = 'home';
 
   function userIsEditing(){
     var el = document.activeElement;
@@ -1891,6 +2063,10 @@
       } else if(itEntrySubView === 'completed'){
         tasks.push(loadCompletedEntries(null, null, o));
       }
+    } else if(currentTab === 'home' && navigator.onLine){
+      var homeOpts = { silent: true, force: !!opts.force };
+      tasks.push(loadPendingEntries(homeOpts));
+      tasks.push(loadProblemPlus(homeOpts));
     }
 
     return Promise.all(tasks)
@@ -2016,6 +2192,7 @@
 
         pendingEntries = entries.concat(kept);
         document.getElementById('pendingCount').textContent = entries.length;
+        refreshHomeDashboard();
 
         entries.forEach(function(batch){
           var key = pendingKey(batch);
@@ -3223,6 +3400,7 @@
         });
         document.getElementById('problemPluCount').textContent = problemPlus.length;
         renderProblemPlus();
+        refreshHomeDashboard();
       })
       .catch(function(err){
         if(silent) throw err;
