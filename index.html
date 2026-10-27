@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DRMS — Disposal Record Management System</title>
+  <title>DRS — Disposal Record System</title>
   <style>
     :root{
       --bg:#f2ede0; --panel:#ffffff; --panel-soft:#f7f2e6; --border:#e2d9c3;
@@ -217,7 +217,7 @@
     @media(prefers-reduced-motion:reduce){.app-sidebar,.app-main,.new-entry-launch{transition:none}}
 
 
-    /* ===== DRMS shell (merged Fresh Market + Goods) ===== */
+    /* ===== DRS shell (merged Fresh Market + Goods) ===== */
     :root{--sidebar:#3b1420;--sidebar-hover:#541f2e;--leaf:#2f7d4f;--leaf-soft:#e3f0e6;--cube:#3f6aa0;--cube-soft:#e4edf8;}
     .sidebar-logo{background:#6e2a37;border:1px solid rgba(255,255,255,.35)}
     .sidebar-link.sub{height:40px;min-height:40px;font-size:12.5px;font-weight:600;color:#d9c6cc}
@@ -302,7 +302,7 @@
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="sidebar-brand">
     <div class="sidebar-logo">DR</div>
-    <div class="sidebar-brand-copy"><b>DRMS</b><span>DISPOSAL RECORDS</span></div>
+    <div class="sidebar-brand-copy"><b>DRS</b><span>DISPOSAL RECORDS</span></div>
   </div>
   <div class="sidebar-section">WORKSPACE</div>
   <nav class="sidebar-nav">
@@ -326,7 +326,7 @@
     <div class="brand">
       <div class="brand-text">
         <div class="title-row">
-          <h1 id="appTitle">DRMS &mdash; Disposal Record Management System</h1>
+          <h1 id="appTitle">DRS &mdash; Disposal Record System</h1>
         </div>
         <p id="categorySubtitle">Fresh Market Disposal &middot; Goods Disposal &middot; Document Tracking</p>
       </div>
@@ -354,7 +354,7 @@
   <section id="homeTabView" style="display:none;">
     <div class="dashboard-welcome">
       <div>
-        <div class="welcome-crumb">DRMS &middot; <b>DISPOSAL RECORD MANAGEMENT SYSTEM</b></div>
+        <div class="welcome-crumb">DRS &middot; <b>DISPOSAL RECORD SYSTEM</b></div>
         <h2 class="welcome-title" id="dashboardGreeting">Welcome back.</h2>
         <p class="welcome-copy">Here is your outlet disposal overview. Choose an action to get started.</p>
       </div>
@@ -1498,7 +1498,7 @@
 
   // Reflects the current category list in the header subtitle, so it
   // never goes stale after Admin adds a new one.
-  function updateCategorySubtitle(){ /* header subtitle is fixed in DRMS */ }
+  function updateCategorySubtitle(){ /* header subtitle is fixed in DRS */ }
 
   function loadCategories(){
     getCategoriesFromSupabase()
@@ -4218,7 +4218,7 @@
   }
 
   // =====================================================================
-  // ================= GOODS DISPOSAL (DRMS) =============================
+  // ================= GOODS DISPOSAL (DRS) =============================
   // =====================================================================
   // Tables: goods_masterlist (per barcode), goods_categories,
   // bad_stock_goods (one row per item, grouped by batch_id).
@@ -4236,7 +4236,7 @@
     return m ? m.sap : '';
   }
   var GD_MAX_QTY = 999;
-  var GD_DRAFT_KEY = 'drms_goods_draft_v1';
+  var GD_DRAFT_KEY = 'drs_goods_draft_v1';
   var GD_SAP_CHUNK = 7;
 
   var gdCategories = [];
