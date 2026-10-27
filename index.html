@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DRMS — Disposal Record Management System</title>
   <style>
     :root{
       --bg:#f2ede0; --panel:#ffffff; --panel-soft:#f7f2e6; --border:#e2d9c3;
@@ -215,19 +216,104 @@
     @media(max-width:560px){.app-sidebar{width:62px;padding:14px 8px}.app-sidebar:hover,.app-sidebar.pinned{width:min(246px,84vw)}.app-main{margin-left:62px}.app-sidebar.pinned~.app-main{margin-left:62px}.wrap{padding:16px 12px 36px}.topbar{padding:13px 12px;min-height:68px}.topbar .brand{gap:9px}.topbar .brand-mark{width:35px;height:35px}.topbar h1{font-size:15px}.topbar p{font-size:9px;letter-spacing:.2px}.topbar .sync-box{font-size:10px;gap:4px}.topbar .sync-btn{font-size:10px;padding:4px 6px}.dashboard-welcome{padding:20px 18px}.dashboard-stats{gap:10px}.stat-card{padding:14px 12px;gap:10px;align-items:flex-start}.stat-icon{width:38px;height:38px;min-width:38px;border-radius:11px;font-size:18px}.stat-value{font-size:25px}.stat-label{font-size:11px}.stat-sub{font-size:10px}.dashboard-panel{padding:17px 15px}.new-entry-launch{padding:18px 15px}.card{padding:16px 13px}}
     @media(prefers-reduced-motion:reduce){.app-sidebar,.app-main,.new-entry-launch{transition:none}}
 
+
+    /* ===== DRMS shell (merged Fresh Market + Goods) ===== */
+    :root{--sidebar:#3b1420;--sidebar-hover:#541f2e;--leaf:#2f7d4f;--leaf-soft:#e3f0e6;--cube:#3f6aa0;--cube-soft:#e4edf8;}
+    .sidebar-logo{background:#6e2a37;border:1px solid rgba(255,255,255,.35)}
+    .sidebar-link.sub{height:40px;min-height:40px;font-size:12.5px;font-weight:600;color:#d9c6cc}
+    .sidebar-link.sub .sidebar-icon{font-size:15px}
+    .app-sidebar:hover .sidebar-link.sub,.app-sidebar.pinned .sidebar-link.sub{padding-left:30px}
+    .sidebar-sub{display:flex;flex-direction:column;gap:4px;margin-top:-3px}
+    .sidebar-chev{margin-left:auto;font-size:12px;opacity:0;transition:opacity .15s,transform .2s}
+    .app-sidebar:hover .sidebar-chev,.app-sidebar.pinned .sidebar-chev{opacity:.8}
+    .sidebar-group-open .sidebar-chev{transform:rotate(180deg)}
+    .sidebar-link.group-active{color:#fff}
+    .topbar{gap:14px}
+    .topbar .brand{min-width:0}
+    .topbar h1{font-size:20px;letter-spacing:.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .topbar p{font-size:10.5px;letter-spacing:1.1px}
+    .top-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
+    .outlet-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:11px;font-weight:800;letter-spacing:.9px;white-space:nowrap}
+    .user-wrap{position:relative}
+    .user-btn{display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#fff;cursor:pointer;font:inherit;padding:2px}
+    .user-avatar{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+    .user-menu{position:absolute;right:0;top:calc(100% + 10px);min-width:210px;background:#fff;color:var(--text);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(45,25,34,.2);padding:6px;display:none;z-index:60}
+    .user-menu.open{display:block}
+    .user-menu .um-head{padding:9px 12px;font-size:11px;color:var(--muted);letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--border);margin-bottom:4px}
+    .user-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 12px;border-radius:8px;font:600 13px inherit;color:var(--text);cursor:pointer}
+    .user-menu button:hover{background:var(--accent-soft)}
+    .page-heading{display:flex;align-items:center;gap:10px}
+    .welcome-crumb{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px}
+    .welcome-crumb b{color:#b0626d;font-weight:800}
+    .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .stat-card{flex-direction:column;align-items:flex-start;gap:10px;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s}
+    .stat-card:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(62,40,34,.08)}
+    .stat-card.fm{background:linear-gradient(135deg,#fff 0%,#f4f9f3 100%)}
+    .stat-card.gd{background:linear-gradient(135deg,#fff 0%,#f1f6fc 100%)}
+    .stat-card.pr{background:linear-gradient(135deg,#fff 0%,#fdf2f1 100%)}
+    .stat-head{display:flex;align-items:center;gap:12px}
+    .stat-title{font-size:14px;font-weight:700;color:#4a2a31}
+    .stat-badge{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 10px;margin-top:4px}
+    .stat-badge.fm{background:var(--leaf-soft);color:var(--leaf)}
+    .stat-badge.gd{background:var(--cube-soft);color:var(--cube)}
+    .stat-icon.fm{background:var(--leaf-soft);color:var(--leaf)}
+    .stat-icon.gd{background:var(--cube-soft);color:var(--cube)}
+    .stat-icon.pr{background:#fbe3e1;color:#b43c46}
+    .stat-icon svg,.launch-icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .stat-value{font-size:34px}
+    .stat-sub a,.stat-sub b{color:var(--accent);font-weight:700}
+    .dashboard-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .launch-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;width:100%;border:1px solid #eadfd6;background:linear-gradient(135deg,#fff 0%,#fbf5f1 100%);border-radius:16px;padding:22px;cursor:pointer;color:inherit;font-family:inherit;transition:transform .18s,box-shadow .18s,border-color .18s}
+    .launch-card:hover{transform:translateY(-2px);border-color:#c89a9d;box-shadow:0 12px 25px rgba(91,37,47,.09)}
+    .launch-card .launch-icon{width:62px;height:62px;border-radius:50%;margin-bottom:14px}
+    .launch-card .launch-icon.fm{background:var(--leaf-soft);color:var(--leaf)}
+    .launch-card .launch-icon.gd{background:#f6e4df;color:#9a4a3a}
+    .launch-card strong{font-size:16px;color:#47232b;margin-bottom:6px}
+    .launch-card span.copy{font-size:12.5px;color:var(--muted);line-height:1.45;margin-bottom:18px;flex:1}
+    .launch-card .launch-cta{width:100%;margin-top:0}
+    .activity-tag{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;border-radius:6px;padding:1px 6px;margin-right:6px}
+    .activity-tag.fm{background:var(--leaf-soft);color:var(--leaf)}
+    .activity-tag.gd{background:var(--cube-soft);color:var(--cube)}
+    .activity-empty{text-align:center;color:var(--muted);font-size:12.5px;padding:26px 0}
+    .activity-empty svg{width:42px;height:42px;stroke:#b9aaa3;fill:none;stroke-width:1.5;display:block;margin:0 auto 10px}
+    .records-bar{display:none;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+    .records-bar button{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:10px;padding:10px 16px;font:700 13px inherit;cursor:pointer}
+    .records-bar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+    .records-bar .count{background:rgba(44,38,32,.09);border-radius:999px;padding:1px 8px;font-size:11px}
+    .records-bar button.active .count{background:rgba(255,255,255,.25)}
+    .admin-section{font-size:11px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--secondary);margin:26px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+    .type-tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;border-radius:6px;padding:2px 8px;margin-right:6px}
+    .type-tag.fm{background:var(--leaf-soft);color:var(--leaf)}
+    .type-tag.gd{background:var(--cube-soft);color:var(--cube)}
+    .gd-prod-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:6px}
+    .gd-prod-grid .pl{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
+    .gd-prod-grid .pv{display:block;font-size:14px;font-weight:700;word-break:break-word}
+    .gd-prod-form{display:grid;grid-template-columns:1fr 1.4fr auto;gap:10px;align-items:end;margin-top:6px}
+    .gd-prod-form label{margin-top:6px}
+    .gd-prod-form .btn{margin-top:0;height:42px}
+    .gd-cart-qty{width:78px}
+    .sap-reason-note{font-size:11px;color:var(--muted)}
+    @media(max-width:1000px){.dashboard-stats,.dashboard-grid{grid-template-columns:1fr}.topbar h1{font-size:17px}.topbar p{display:none}}
+    @media(max-width:700px){.outlet-pill{padding:5px 9px;font-size:9.5px;letter-spacing:.4px}.top-right{gap:7px}.user-avatar{width:26px;height:26px}.gd-prod-form{grid-template-columns:1fr}.gd-prod-form .btn{width:100%}.topbar h1{font-size:14px}}
+    @media(max-width:560px){.top-right .sync-box{display:none}.topbar .brand{flex:1 1 auto}}
   </style>
 </head>
 <body>
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="sidebar-brand">
-    <div class="sidebar-logo">BS</div>
-    <div class="sidebar-brand-copy"><b>SHBN</b><span>BAD STOCK LOG</span></div>
+    <div class="sidebar-logo">DR</div>
+    <div class="sidebar-brand-copy"><b>DRMS</b><span>DISPOSAL RECORDS</span></div>
   </div>
   <div class="sidebar-section">WORKSPACE</div>
   <nav class="sidebar-nav">
     <button class="sidebar-link active" id="sideBtnHome" onclick="showTab('home')" title="Home"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Home</span></button>
-    <button class="sidebar-link" id="sideBtnNew" onclick="showTab('new')" title="New Entry"><span class="sidebar-icon">＋</span><span class="sidebar-label">New Entry</span></button>
-    <button class="sidebar-link" id="sideBtnIt" onclick="showTab('it')" title="IT Entry"><span class="sidebar-icon">▤</span><span class="sidebar-label">IT Entry</span></button>
+    <button class="sidebar-link sidebar-group-open" id="sideBtnNewGroup" onclick="toggleNewMenu()" title="New Disposal"><span class="sidebar-icon">＋</span><span class="sidebar-label">New Disposal</span><span class="sidebar-chev" id="newMenuChev">⌃</span></button>
+    <div class="sidebar-sub" id="newSubMenu">
+      <button class="sidebar-link sub" id="sideBtnNew" onclick="showTab('new')" title="Fresh Market"><span class="sidebar-icon">❦</span><span class="sidebar-label">Fresh Market</span></button>
+      <button class="sidebar-link sub" id="sideBtnGnew" onclick="showTab('gnew')" title="Goods"><span class="sidebar-icon">▣</span><span class="sidebar-label">Goods</span></button>
+    </div>
+    <button class="sidebar-link" id="sideBtnIt" onclick="openRecords()" title="Disposal Records"><span class="sidebar-icon">▤</span><span class="sidebar-label">Disposal Records</span></button>
+    <button class="sidebar-link" id="sideBtnDocs" onclick="showTab('docs')" title="Documents"><span class="sidebar-icon">❐</span><span class="sidebar-label">Documents</span></button>
     <button class="sidebar-link" id="sideBtnAdmin" onclick="showTab('admin')" title="Admin"><span class="sidebar-icon">⚙</span><span class="sidebar-label">Admin</span></button>
   </nav>
   <div class="sidebar-spacer"></div>
@@ -238,51 +324,86 @@
 
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark">BS</div>
       <div class="brand-text">
         <div class="title-row">
-          <h1 id="appTitle">SHBN - Bad Stock Log</h1>
-          <div class="sync-box" id="syncBox">
-            <span><span class="sync-dot"></span><span id="syncText">Starting...</span></span>
-            <button class="sync-btn" id="forceRefreshBtn" onclick="forceRefreshAll()" title="Reload all data now">&#8635; Force refresh</button>
-          </div>
+          <h1 id="appTitle">DRMS &mdash; Disposal Record Management System</h1>
         </div>
-        <p id="categorySubtitle">Meat &amp; Seafood &middot; Local Vege &middot; Import Vege &middot; Fruit &middot; Frozen &amp; Dried Food</p>
+        <p id="categorySubtitle">Fresh Market Disposal &middot; Goods Disposal &middot; Document Tracking</p>
       </div>
     </div>
-    <nav class="tabs top-tabs" aria-hidden="true"></nav>
+    <div class="top-right">
+      <div class="sync-box" id="syncBox">
+        <span><span class="sync-dot"></span><span id="syncText">Starting...</span></span>
+        <button class="sync-btn" id="forceRefreshBtn" onclick="forceRefreshAll()" title="Reload all data now">&#8635; Force refresh</button>
+      </div>
+      <div class="outlet-pill" id="outletPill">&#9679; OUTLET: <span id="outletPillText">1008-SHBN</span></div>
+      <div class="user-wrap">
+        <button class="user-btn" id="userBtn" onclick="toggleUserMenu(event)" aria-label="User menu">
+          <span class="user-avatar"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8" r="4.2"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z"/></svg></span><span style="font-size:11px;">&#9662;</span>
+        </button>
+        <div class="user-menu" id="userMenu">
+          <div class="um-head" id="userMenuOutlet">Outlet</div>
+          <button onclick="toggleUserMenu();forceRefreshAll();">&#8635; Force refresh all data</button>
+          <button onclick="toggleUserMenu();showTab('admin');">&#9881; Admin</button>
+        </div>
+      </div>
+    </div>
   </header>
-
-  <div id="outletNotice" class="outlet-notice"></div>
 
   <!-- ============ HOME DASHBOARD ============ -->
   <section id="homeTabView" style="display:none;">
     <div class="dashboard-welcome">
       <div>
-        <div class="welcome-eyebrow">SHBN · BAD STOCK MANAGEMENT</div>
+        <div class="welcome-crumb">DRMS &middot; <b>DISPOSAL RECORD MANAGEMENT SYSTEM</b></div>
         <h2 class="welcome-title" id="dashboardGreeting">Welcome back.</h2>
-        <p class="welcome-copy">Here is your outlet overview. Choose an action to get started.</p>
+        <p class="welcome-copy">Here is your outlet disposal overview. Choose an action to get started.</p>
       </div>
       <div class="welcome-date" id="dashboardDate"></div>
     </div>
 
     <div class="dashboard-stats">
-      <div class="stat-card" role="button" tabindex="0" onclick="openDashboardSection('it','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','pending');}">
-        <div class="stat-icon">◷</div><div><div class="stat-label">Pending transactions</div><div class="stat-value" id="homePendingCount">—</div><div class="stat-sub">Waiting for IT processing · View pending →</div></div>
+      <div class="stat-card fm" role="button" tabindex="0" onclick="openDashboardSection('it','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','pending');}">
+        <div class="stat-head">
+          <div class="stat-icon fm"><svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 15-14 0 10-5 15-13 15"/><path d="M5 19c3-5 6-8 10-10"/></svg></div>
+          <div><div class="stat-title">Fresh Market Disposal</div><span class="stat-badge fm">Pending</span></div>
+        </div>
+        <div class="stat-value" id="homeFmCount">&mdash;</div>
+        <div class="stat-sub">Waiting for IT processing &nbsp;&middot;&nbsp; <b>View pending &rarr;</b></div>
       </div>
-      <div class="stat-card" role="button" tabindex="0" onclick="openDashboardSection('it','problem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','problem');}">
-        <div class="stat-icon problem">⚠</div><div><div class="stat-label">Problem PLUs</div><div class="stat-value" id="homeProblemCount">—</div><div class="stat-sub">Items requiring masterlist details · Review →</div></div>
+      <div class="stat-card gd" role="button" tabindex="0" onclick="openDashboardSection('git','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('git','pending');}">
+        <div class="stat-head">
+          <div class="stat-icon gd"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
+          <div><div class="stat-title">Goods Disposal</div><span class="stat-badge gd">Pending</span></div>
+        </div>
+        <div class="stat-value" id="homeGdCount">&mdash;</div>
+        <div class="stat-sub">Waiting for IT processing &nbsp;&middot;&nbsp; <b>View pending &rarr;</b></div>
+      </div>
+      <div class="stat-card pr" role="button" tabindex="0" onclick="openDashboardSection('it','problem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','problem');}">
+        <div class="stat-head">
+          <div class="stat-icon pr"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg></div>
+          <div><div class="stat-title">PLU Problems</div></div>
+        </div>
+        <div class="stat-value" id="homeProblemCount">&mdash;</div>
+        <div class="stat-sub">Fresh Market items requiring masterlist details &nbsp;&middot;&nbsp; <b>Review &rarr;</b></div>
       </div>
     </div>
 
     <div class="dashboard-grid">
-      <button class="new-entry-launch" type="button" onclick="showTab('new')" aria-label="Go to New Entry">
-        <div class="launch-top"><div class="launch-icon">＋</div><div class="launch-copy"><strong>New Entry</strong><span>Record a new bad stock item and submit it for processing.</span></div><span class="launch-arrow">→</span></div>
-        <div class="launch-cta">Start a new entry <span>→</span></div>
+      <button class="launch-card" type="button" onclick="showTab('new')" aria-label="New Fresh Market Disposal">
+        <div class="launch-icon fm"><svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 15-14 0 10-5 15-13 15"/><path d="M5 19c3-5 6-8 10-10"/></svg></div>
+        <strong>New Fresh Market Disposal</strong>
+        <span class="copy">Record disposed fresh products and submit the disposal document.</span>
+        <div class="launch-cta">Start fresh market entry <span>&rarr;</span></div>
+      </button>
+      <button class="launch-card" type="button" onclick="showTab('gnew')" aria-label="New Goods Disposal">
+        <div class="launch-icon gd"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
+        <strong>New Goods Disposal</strong>
+        <span class="copy">Record disposed goods and manage the related disposal document.</span>
+        <div class="launch-cta">Start goods entry <span>&rarr;</span></div>
       </button>
       <div class="dashboard-panel">
-        <div class="dashboard-panel-head"><h2>Recent activity</h2><button class="dashboard-link" onclick="showTab('it')">Open IT Entry →</button></div>
-        <div id="homeRecentActivity" class="activity-list"><div class="empty">Loading recent activity…</div></div>
+        <div class="dashboard-panel-head"><h2>&#9719; Recent Activity</h2><button class="dashboard-link" onclick="openRecords()">View disposal records</button></div>
+        <div id="homeRecentActivity" class="activity-list"><div class="activity-empty">Loading recent activity&hellip;</div></div>
       </div>
     </div>
   </section>
@@ -294,6 +415,7 @@
 
   <!-- ============ NEW ENTRY TAB ============ -->
   <div id="newTabView" style="display:none;">
+    <h2 class="page-heading">New Fresh Market Disposal</h2>
 
     <!-- STEP 1: Staff / Supervisor -->
     <div class="card" id="step1View" style="display:none;">
@@ -343,6 +465,89 @@
         <div id="submitStatus"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ============ GOODS: NEW ENTRY ============ -->
+  <div id="gnewTabView" style="display:none;">
+    <h2 class="page-heading">New Goods Disposal</h2>
+
+    <div class="card" id="gdStep1View">
+      <h2><span class="step-badge">1</span> Start New Entry</h2>
+      <label>Staff Name</label>
+      <input type="text" id="gdStaffInput" placeholder="Enter staff name">
+      <label>Supervisor Name</label>
+      <input type="text" id="gdSupervisorInput" placeholder="Enter supervisor name">
+      <label>Bad Stock Category</label>
+      <select id="gdCategorySelect"><option value="">Select category...</option></select>
+      <button class="btn btn-full" onclick="gdGoToStep2()">Continue</button>
+      <div id="gdStep1Status"></div>
+    </div>
+
+    <div id="gdStep2View" style="display:none;">
+      <div class="summary-bar">
+        <div class="info">
+          <span id="gdSummaryOutlet" class="cat-tag" style="margin-right:8px;"></span>
+          <b id="gdSummaryStaff"></b> &middot; <span id="gdSummarySupervisor"></span>
+          &middot; <span class="cat-tag" id="gdSummaryCategory"></span>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <span class="edit-link" onclick="gdBackToStep1()">Edit</span>
+          <span class="edit-link" style="color:var(--danger);" onclick="gdCancelEntry()">Cancel</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">2</span> Scan &amp; Add Item</h2>
+        <label>Scan / Enter Barcode or Material</label>
+        <div class="btn-row" style="flex-wrap:nowrap;">
+          <input type="text" id="gdScanInput" placeholder="Scan barcode or enter Material / EAN-UPC" autocomplete="off" style="flex:1;">
+          <button class="btn ghost" style="margin-top:0;" onclick="gdSearch()">Search</button>
+        </div>
+        <div id="gdSearchHint"></div>
+
+        <div class="lookup-preview" id="gdProductResult" style="display:none;">
+          <div id="gdChooserWrap" style="display:none;margin-bottom:10px;">
+            <label style="margin-top:0;">Several units found &mdash; choose the one scanned</label>
+            <select id="gdChooser" onchange="gdPickMatch(this.value)"></select>
+          </div>
+          <div class="gd-prod-grid">
+            <div><span class="pl">Description</span><span class="pv" id="gdPrDesc">-</span></div>
+            <div><span class="pl">Sales Unit</span><span class="pv" id="gdPrUnit">-</span></div>
+            <div><span class="pl">Numerator</span><span class="pv" id="gdPrNum">-</span></div>
+            <div><span class="pl">Department</span><span class="pv" id="gdPrDept">-</span></div>
+            <div><span class="pl">Material</span><span class="pv" id="gdPrMat">-</span></div>
+            <div><span class="pl">EAN / UPC</span><span class="pv" id="gdPrEan">-</span></div>
+          </div>
+          <div class="gd-prod-form">
+            <div><label>Quantity</label><input type="number" id="gdQtyInput" min="1" max="999" step="1" placeholder="Qty"></div>
+            <div><label>Reason</label>
+              <select id="gdReasonInput">
+                <option value="">Select reason...</option>
+                <option value="Damaged">Damaged</option>
+                <option value="Expired">Expired</option>
+                <option value="Buy 1 Free 1">Buy 1 Free 1</option>
+                <option value="Others">Others</option>
+              </select>
+            </div>
+            <button class="btn" onclick="gdInsertItem()">Insert</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">3</span> <span>Preview (<span id="gdCartCount">0</span> item<span id="gdCartPlural">s</span>)</span></h2>
+        <div id="gdCartEmpty" class="empty">No items added yet.</div>
+        <div id="gdCartList"></div>
+        <button class="btn btn-full" id="gdSubmitBtn" onclick="gdSubmitCart()" disabled>Submit All</button>
+        <div id="gdSubmitStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RECORDS SWITCH (Fresh Market / Goods) ============ -->
+  <div class="records-bar" id="recordsBar">
+    <button id="recBtnFm" onclick="showTab('it')">Fresh Market Disposal <span class="count" id="recCountFm">0</span></button>
+    <button id="recBtnGd" onclick="showTab('git')">Goods Disposal <span class="count" id="recCountGd">0</span></button>
   </div>
 
   <!-- ============ IT ENTRY TAB ============ -->
@@ -403,6 +608,68 @@
     </div>
   </div>
 
+  <!-- ============ GOODS: DISPOSAL RECORDS ============ -->
+  <div id="gitTabView" style="display:none;">
+    <div class="card">
+      <nav class="tabs" style="margin-bottom:14px;">
+        <button id="gdSubTabPending" class="active" onclick="gdSwitchSubView('pending')">Pending</button>
+        <button id="gdSubTabCompleted" onclick="gdSwitchSubView('completed')">Completed</button>
+      </nav>
+      <div id="gdHeaderPending">
+        <h2><span class="step-badge">&#9679;</span> Pending Goods Entries<span class="pending-badge" id="gdPendingCount">0</span></h2>
+      </div>
+      <div id="gdHeaderCompleted" style="display:none;">
+        <h2><span class="step-badge">&#10003;</span> Completed Goods Entries<span class="pending-badge" id="gdCompletedCount">0</span></h2>
+      </div>
+    </div>
+
+    <div id="gdPendingSubView">
+      <div class="card">
+        <h2>Select Category</h2>
+        <div class="category-picker" id="gdCategoryPicker"></div>
+      </div>
+      <div id="gdPendingCategoryEmpty" class="empty" style="display:none;">Select a category above to view its pending entries.</div>
+      <div id="gdPendingEmpty" class="empty" style="display:none;">No pending entries in this category.</div>
+      <div id="gdPendingList"></div>
+    </div>
+
+    <div id="gdCompletedSubView" style="display:none;">
+      <div class="card">
+        <h2>Date Range</h2>
+        <label>Date From</label>
+        <input type="date" id="gdCompletedDateFrom">
+        <label>Date To</label>
+        <input type="date" id="gdCompletedDateTo">
+        <button class="btn btn-full" onclick="gdRunCompleted()">Run</button>
+        <div id="gdCompletedDateStatus"></div>
+      </div>
+      <div class="card">
+        <h2>Select Category</h2>
+        <div class="category-picker" id="gdCompletedCategoryPicker"></div>
+      </div>
+      <div id="gdCompletedCategoryEmpty" class="empty" style="display:none;">Select a category above to view completed entries.</div>
+      <div id="gdCompletedEmpty" class="empty" style="display:none;">No completed entries in this range.</div>
+      <div id="gdCompletedList"></div>
+    </div>
+  </div>
+
+  <!-- ============ DOCUMENTS ============ -->
+  <div id="docsTabView" style="display:none;">
+    <h2 class="page-heading">Documents</h2>
+    <div class="card">
+      <h2><span class="step-badge">&#128269;</span> Find by Material Document</h2>
+      <label>Material Document No.</label>
+      <input type="text" id="docsSearchInput" placeholder="Enter material document number" onkeydown="if(event.key==='Enter'){event.preventDefault();docsSearch();}">
+      <button class="btn btn-full" onclick="docsSearch()">Search</button>
+      <div id="docsSearchStatus"></div>
+    </div>
+    <div id="docsSearchResult"></div>
+    <div class="card">
+      <h2><span class="step-badge">&#10003;</span> Recently keyed-in documents</h2>
+      <div id="docsRecent"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
   <!-- ============ ADMIN TAB ============ -->
   <div id="adminTabView" style="display:none;">
     <div class="card" id="adminLockView">
@@ -414,15 +681,17 @@
     </div>
 
     <div id="adminUnlockedView" style="display:none;">
+      <div class="admin-section" style="margin-top:0;">Outlet</div>
       <div class="card">
         <h2><span class="step-badge">&#127970;</span> Outlet Settings</h2>
         <label>Current Outlet</label>
         <select id="adminOutletSelect"></select>
         <button class="btn btn-full" onclick="saveOutletSetting()">Save Outlet</button>
-        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, IT Entry, Completed, and Problem PLUs. The Masterlist itself stays shared between outlets.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, Disposal Records (Fresh Market and Goods) and Documents. The masterlists stay shared between outlets.</p>
         <div id="outletSettingStatus"></div>
       </div>
 
+      <div class="admin-section">Fresh Market Disposal</div>
       <div class="card">
         <h2><span class="step-badge">+</span> Add New Category</h2>
         <label>Category Name</label>
@@ -465,6 +734,50 @@
       </div>
       <div id="adminPendingEmpty" class="empty" style="display:none;">No pending transactions.</div>
       <div id="adminPendingList"></div>
+
+      <div class="admin-section">Goods Disposal</div>
+
+      <div class="card">
+        <h2><span class="step-badge">+</span> Add New Goods Category</h2>
+        <label>Category Name</label>
+        <input type="text" id="gdNewCategoryInput" placeholder="e.g. Bad Stock Others">
+        <button class="btn btn-full" onclick="gdAdminAddCategory()">Save Category</button>
+        <div id="gdNewCategoryStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">+</span> Add / Update Goods Masterlist Item</h2>
+        <label>Material</label>
+        <input type="text" id="gdAdmMaterial" placeholder="e.g. 10000000">
+        <label>Material Description</label>
+        <input type="text" id="gdAdmDesc" placeholder="e.g. TIGER BISKUT SUSU 175G">
+        <label>Sales Unit</label>
+        <input type="text" id="gdAdmUnit" placeholder="e.g. EA">
+        <label>Numerator</label>
+        <input type="number" id="gdAdmNum" placeholder="e.g. 1">
+        <label>EAN / UPC</label>
+        <input type="text" id="gdAdmEan" placeholder="Barcode (used to find an existing row)">
+        <label>Department</label>
+        <input type="text" id="gdAdmDept" placeholder="e.g. CONFECTIONERY">
+        <button class="btn btn-full" onclick="gdAdminSaveItem()">Save to Goods Masterlist</button>
+        <div id="gdAdmSaveStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">&#128269;</span> Find Goods Masterlist Item</h2>
+        <label>Barcode or Material</label>
+        <input type="text" id="gdAdmSearchInput" placeholder="Enter barcode or material" onkeydown="if(event.key==='Enter'){event.preventDefault();gdAdminSearch();}">
+        <button class="btn btn-full" onclick="gdAdminSearch()">Search</button>
+        <div id="gdAdmSearchStatus"></div>
+      </div>
+      <div id="gdAdmSearchResult"></div>
+
+      <div class="card">
+        <h2><span class="step-badge">&#128465;</span> Delete Pending Goods Transaction</h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="gdLoadAdminPending()">Refresh List</button>
+      </div>
+      <div id="gdAdminPendingEmpty" class="empty" style="display:none;">No pending goods transactions.</div>
+      <div id="gdAdminPendingList"></div>
     </div>
   </div>
 
@@ -833,6 +1146,7 @@
               staff: row.staff,
               supervisor: row.supervisor,
               dateDisplay: formatDateDisplay(row.entry_date),
+              entryDate: row.entry_date,
               items: []
             };
             order.push(row.batch_id);
@@ -1175,25 +1489,22 @@
   // startup and again whenever Admin switches outlets, so the app (and
   // anything printed from it) always identifies the right store.
   function applyOutletBranding(){
-    var titleEl = document.getElementById('appTitle');
-    if(titleEl) titleEl.textContent = outletShortName(currentOutletPlant) + ' - Bad Stock Log';
-    var noticeEl = document.getElementById('outletNotice');
-    if(noticeEl) noticeEl.textContent = 'Outlet: ' + outletLabel(currentOutletPlant);
+    var label = outletLabel(currentOutletPlant);
+    var pill = document.getElementById('outletPillText');
+    if(pill) pill.textContent = label;
+    var um = document.getElementById('userMenuOutlet');
+    if(um) um.textContent = 'Outlet: ' + label;
   }
 
   // Reflects the current category list in the header subtitle, so it
   // never goes stale after Admin adds a new one.
-  function updateCategorySubtitle(){
-    var el = document.getElementById('categorySubtitle');
-    if(el) el.textContent = appCategories.join(' \u00b7 ');
-  }
+  function updateCategorySubtitle(){ /* header subtitle is fixed in DRMS */ }
 
   function loadCategories(){
     getCategoriesFromSupabase()
       .then(function(categories){
         appCategories = categories;
         updateCategorySubtitle();
-        renderHomeCategories();
         applyOutletBranding();
         document.getElementById('loadingView').style.display = 'none';
         lastSyncAt = Date.now();
@@ -1203,6 +1514,7 @@
         loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
         loadProblemPlus({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
         flushOutbox();
+        gdInit();
 
         var draft = loadDraft();
         if(draft && draft.staff && draft.supervisor){
@@ -1235,25 +1547,66 @@
   }
 
   // ---------- Tab switching ----------
+  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', admin:'adminTabView' };
+  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', admin:'sideBtnAdmin' };
+  var lastRecordsType = 'it';
+
   function showTab(tab){
     currentTab = tab;
-    document.getElementById('homeTabView').style.display = tab === 'home' ? 'block' : 'none';
-    document.getElementById('newTabView').style.display = tab === 'new' ? 'block' : 'none';
-    document.getElementById('itTabView').style.display = tab === 'it' ? 'block' : 'none';
-    document.getElementById('adminTabView').style.display = tab === 'admin' ? 'block' : 'none';
-
-    ['Home','New','It','Admin'].forEach(function(name){
-      var key = name.toLowerCase();
-      var el = document.getElementById('sideBtn' + name);
-      if(el) el.classList.toggle('active', key === tab);
+    Object.keys(TAB_VIEWS).forEach(function(k){
+      var el = document.getElementById(TAB_VIEWS[k]);
+      if(el) el.style.display = k === tab ? 'block' : 'none';
     });
+    var bar = document.getElementById('recordsBar');
+    if(bar) bar.style.display = (tab === 'it' || tab === 'git') ? 'flex' : 'none';
+    var recFm = document.getElementById('recBtnFm'), recGd = document.getElementById('recBtnGd');
+    if(recFm) recFm.classList.toggle('active', tab === 'it');
+    if(recGd) recGd.classList.toggle('active', tab === 'git');
+
+    ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnAdmin'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.classList.toggle('active', TAB_SIDE[tab] === id);
+    });
+    var grp = document.getElementById('sideBtnNewGroup');
+    if(grp) grp.classList.toggle('group-active', tab === 'new' || tab === 'gnew');
+    closeUserMenu();
+
     if(tab === 'it'){
+      lastRecordsType = 'it';
       loadPendingEntries().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
       if(itEntrySubView === 'problem') loadProblemPlus({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+      gdLoadPending({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
-    if(tab === 'home') refreshHomeDashboard();
+    if(tab === 'git'){
+      lastRecordsType = 'git';
+      gdLoadPending().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
+      loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
+    }
+    if(tab === 'docs') docsLoadRecent();
+    if(tab === 'home'){
+      refreshHomeDashboard();
+      loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+      gdLoadPending({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+    }
+    window.scrollTo(0, 0);
     updateSyncUi();
   }
+  function openRecords(){ showTab(lastRecordsType === 'git' ? 'git' : 'it'); }
+  function toggleNewMenu(){
+    var sub = document.getElementById('newSubMenu');
+    var grp = document.getElementById('sideBtnNewGroup');
+    var open = sub.style.display === 'none';
+    sub.style.display = open ? '' : 'none';
+    grp.classList.toggle('sidebar-group-open', open);
+  }
+  function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation();
+    document.getElementById('userMenu').classList.toggle('open');
+  }
+  function closeUserMenu(){
+    var m = document.getElementById('userMenu'); if(m) m.classList.remove('open');
+  }
+  document.addEventListener('click', closeUserMenu);
 
   var SIDEBAR_PIN_KEY = 'shbn_bad_stock_sidebar_pinned_v1';
   function applySidebarPreference(){
@@ -1279,43 +1632,56 @@
   function openDashboardSection(tab, subview){
     showTab(tab);
     if(tab === 'it' && subview){ switchItSubView(subview); }
+    if(tab === 'git' && subview){ gdSwitchSubView(subview); }
+  }
+  function homeFmPendingCount(){
+    return (pendingEntries || []).filter(function(b){
+      var d = pendingDraft[pendingKey(b)];
+      return !(d && d.submitted);
+    }).length;
+  }
+  function homeGdPendingCount(){
+    return (gdPending || []).filter(function(b){
+      var d = gdDraft[b.txnId];
+      return !(d && d.submitted);
+    }).length;
   }
   function updateHomeCounts(){
-    var pending = document.getElementById('homePendingCount');
+    var fm = document.getElementById('homeFmCount');
+    var gd = document.getElementById('homeGdCount');
     var problem = document.getElementById('homeProblemCount');
-    if(pending) pending.textContent = String(pendingEntries.length || 0);
-    if(problem) problem.textContent = String(problemPlus.length || 0);
-  }
-  function renderHomeCategories(){
-    var container = document.getElementById('homeCategories');
-    if(!container) return;
-    container.innerHTML = '';
-    if(!appCategories.length){ container.innerHTML = '<span class="dashboard-category">No categories found</span>'; return; }
-    appCategories.forEach(function(category){
-      var chip = document.createElement('span');
-      chip.className = 'dashboard-category';
-      chip.textContent = category;
-      container.appendChild(chip);
-    });
+    if(fm) fm.textContent = String(homeFmPendingCount());
+    if(gd) gd.textContent = String(homeGdPendingCount());
+    if(problem) problem.textContent = String((problemPlus || []).length || 0);
+    gdUpdateRecordCounts();
   }
   function renderHomeRecentActivity(){
     var container = document.getElementById('homeRecentActivity');
     if(!container) return;
+    var rows = [];
+    (pendingEntries || []).forEach(function(b){
+      var d = pendingDraft[pendingKey(b)];
+      if(d && d.submitted) return;
+      rows.push({ type:'fm', category:b.category, staff:b.staff, when:b.entryDate || '', display:b.dateDisplay, count:(b.items || []).length });
+    });
+    (gdPending || []).forEach(function(b){
+      var d = gdDraft[b.txnId];
+      if(d && d.submitted) return;
+      rows.push({ type:'gd', category:b.category, staff:b.staff, when:b.entryDate || '', display:b.dateDisplay, count:(b.items || []).length });
+    });
+    rows.sort(function(a, b){ return String(b.when).localeCompare(String(a.when)); });
+    rows = rows.slice(0, 5);
+    if(!rows.length){
+      container.innerHTML = '<div class="activity-empty"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>No recent disposal activity to show.</div>';
+      return;
+    }
     container.innerHTML = '';
-    var rows = (pendingEntries || []).slice().sort(function(a,b){
-      return String(b.entryDate || b.dateDisplay || '').localeCompare(String(a.entryDate || a.dateDisplay || ''));
-    }).slice(0,4);
-    if(!rows.length){ container.innerHTML = '<div class="empty">No pending activity to show.</div>'; return; }
-    rows.forEach(function(batch){
+    rows.forEach(function(r){
       var row = document.createElement('div'); row.className = 'activity-row';
-      var dot = document.createElement('span'); dot.className = 'activity-dot';
-      var main = document.createElement('div'); main.className = 'activity-main';
-      var title = document.createElement('div'); title.className = 'activity-title'; title.textContent = batch.category || 'Bad stock transaction';
-      var meta = document.createElement('div'); meta.className = 'activity-meta';
-      meta.textContent = (batch.dateDisplay || batch.entryDate || 'Pending') + ' · ' + (batch.staff || 'Staff not listed');
-      main.appendChild(title); main.appendChild(meta);
-      var count = document.createElement('span'); count.className = 'activity-count'; count.textContent = (batch.items ? batch.items.length : 0) + ' item(s)';
-      row.appendChild(dot); row.appendChild(main); row.appendChild(count); container.appendChild(row);
+      row.innerHTML = '<span class="activity-dot"></span><div class="activity-main"><div class="activity-title"><span class="activity-tag ' + r.type + '">' +
+        (r.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span>' + escapeHtml(r.category || 'Disposal') + '</div><div class="activity-meta">' +
+        escapeHtml(r.display || 'Pending') + ' \u00b7 ' + escapeHtml(r.staff || 'Staff not listed') + '</div></div><span class="activity-count">' + r.count + ' item(s)</span>';
+      container.appendChild(row);
     });
   }
   function refreshHomeDashboard(){
@@ -1327,7 +1693,7 @@
       var h = new Date().getHours();
       greetEl.textContent = (h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening')) + ', welcome back.';
     }
-    updateHomeCounts(); renderHomeCategories(); renderHomeRecentActivity();
+    updateHomeCounts(); renderHomeRecentActivity();
   }
 
   // ================= NEW ENTRY =================
@@ -2032,7 +2398,7 @@
       var ago = Math.max(0, Math.round((Date.now() - lastSyncAt) / 1000));
       var next = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
       text = 'Live · updated ' + ago + 's ago';
-      if(currentTab === 'it') text += ' · next in ' + next + 's';
+      if(currentTab === 'it' || currentTab === 'git') text += ' · next in ' + next + 's';
     } else {
       text = 'Live';
     }
@@ -2061,10 +2427,15 @@
       } else if(itEntrySubView === 'completed'){
         tasks.push(loadCompletedEntries(null, null, o));
       }
+    } else if(currentTab === 'git' && navigator.onLine){
+      var go = { silent: true, force: !!opts.force };
+      if(gdSubView === 'pending') tasks.push(gdLoadPending(go));
+      else tasks.push(gdLoadCompleted(null, null, go));
     } else if(currentTab === 'home' && navigator.onLine){
       var homeOpts = { silent: true, force: !!opts.force };
       tasks.push(loadPendingEntries(homeOpts));
       tasks.push(loadProblemPlus(homeOpts));
+      tasks.push(gdLoadPending(homeOpts).catch(function(){}));
     }
 
     return Promise.all(tasks)
@@ -2095,8 +2466,10 @@
     showBusy('Refreshing all data...');
 
     var o = { silent: true, force: true, refreshMasterlist: true };
-    Promise.all([getMasterlistFromSupabase(), getCategoriesFromSupabase()])
+    Promise.all([getMasterlistFromSupabase(), getCategoriesFromSupabase(), gdGetCategories().catch(function(){ return gdCategories; })])
       .then(function(r){
+        gdCategories = r[2];
+        gdPopulateCategorySelect();
         masterlist = r[0];
         masterlistByPlu = {};
         r[0].forEach(function(item){ masterlistByPlu[String(item.plu).trim()] = item; });
@@ -2108,7 +2481,11 @@
         var from = document.getElementById('completedDateFrom').value;
         var to = document.getElementById('completedDateTo').value;
         if(from && to) tasks.push(loadCompletedEntries(from, to, o));
-        if(adminUnlocked) tasks.push(loadAdminPendingList());
+        tasks.push(gdLoadPending(o).catch(function(){}));
+        var gf = document.getElementById('gdCompletedDateFrom').value;
+        var gt = document.getElementById('gdCompletedDateTo').value;
+        if(gf && gt) tasks.push(gdLoadCompleted(gf, gt, o).catch(function(){}));
+        if(adminUnlocked){ tasks.push(loadAdminPendingList()); tasks.push(gdLoadAdminPending()); }
         return Promise.all(tasks);
       })
       .then(function(){
@@ -2132,7 +2509,7 @@
     updateSyncUi();
     if(document.hidden || syncInFlight) return;
     if(Date.now() < nextRefreshAt) return;
-    if(currentTab === 'it' && (userIsEditing() || overlayOpen())) return; // try again next second
+    if((currentTab === 'it' || currentTab === 'git') && (userIsEditing() || overlayOpen())) return; // try again next second
     autoRefreshNow();
   }, 1000);
 
@@ -3088,7 +3465,7 @@
     var outletName = outletShortName(currentOutletPlant);
 
     var html =
-      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Bad Stock Log</title><style>' +
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Fresh Market Disposal</title><style>' +
       'body{font-family:Georgia, "Times New Roman", serif;color:#222;margin:32px;}' +
       '.title{text-align:center;font-size:20px;font-weight:700;letter-spacing:0.5px;margin-bottom:2px;}' +
       '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
@@ -3110,7 +3487,7 @@
       '<table>' +
         '<thead>' +
           '<tr><th colspan="4" class="doc-head-cell">' +
-            '<div class="title">' + escapeHtml(outletName) + ' &mdash; Bad Stock Log</div>' +
+            '<div class="title">' + escapeHtml(outletName) + ' &mdash; Fresh Market Disposal</div>' +
             '<div class="subtitle">Bad Stock Report</div>' +
             '<div class="meta">' +
               '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
@@ -3174,6 +3551,7 @@
       populateAdminOutletDropdown();
       populateAdminCategoryDropdown();
       loadAdminPendingList();
+      gdAdminInit();
     } else {
       statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
     }
@@ -3199,6 +3577,12 @@
       return;
     }
 
+    if(gdCart.length){
+      statusEl.innerHTML = '<div class="status err">Goods New Entry still has ' + gdCart.length + ' unsent item(s) for ' + escapeHtml(outletLabel(currentOutletPlant)) +
+        '. Submit or clear that list first, otherwise it would be sent to the wrong outlet.</div>';
+      document.getElementById('adminOutletSelect').value = currentOutletPlant;
+      return;
+    }
     if(cart.length){
       statusEl.innerHTML = '<div class="status err">New Entry still has ' + cart.length + ' unsent item(s) for ' + escapeHtml(outletLabel(currentOutletPlant)) +
         '. Submit or clear that list first, otherwise it would be sent to the wrong outlet.</div>';
@@ -3242,6 +3626,10 @@
     selectedPendingCategory = null;
     selectedCompletedCategory = null;
     lastPendingSig = null; lastProblemSig = null; lastCompletedSig = null;
+    gdPending = []; gdCompleted = []; gdDraft = {}; gdSelPendingCat = null; gdSelCompletedCat = null;
+    gdLastPendingSig = null; gdLastCompletedSig = null;
+    gdLoadPending({silent:true, force:true}).catch(function(){}).then(refreshHomeDashboard);
+    gdLoadAdminPending();
 
     loadProblemPlus();
     loadAdminPendingList();
@@ -3827,6 +4215,1163 @@
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
       });
+  }
+
+  // =====================================================================
+  // ================= GOODS DISPOSAL (DRMS) =============================
+  // =====================================================================
+  // Tables: goods_masterlist (per barcode), goods_categories,
+  // bad_stock_goods (one row per item, grouped by batch_id).
+  // Everything here is prefixed gd / Gd so it never collides with the
+  // Fresh Market code above, which is untouched.
+
+  var GD_REASONS = [
+    { label: 'Damaged',      sap: '2' },
+    { label: 'Expired',      sap: '1' },
+    { label: 'Buy 1 Free 1', sap: '1' },
+    { label: 'Others',       sap: ''  }   // typed manually in SAP
+  ];
+  function gdSapReason(label){
+    var m = GD_REASONS.find(function(r){ return r.label === label; });
+    return m ? m.sap : '';
+  }
+  var GD_MAX_QTY = 999;
+  var GD_DRAFT_KEY = 'drms_goods_draft_v1';
+  var GD_SAP_CHUNK = 7;
+
+  var gdCategories = [];
+  var gdCart = [];
+  var gdSession = { staff: '', supervisor: '', category: '' };
+  var gdMatches = [];
+  var gdProduct = null;
+  var gdSearchToken = 0;
+  var gdPending = [];
+  var gdDraft = {};
+  var gdCompleted = [];
+  var gdSubView = 'pending';
+  var gdSelPendingCat = null;
+  var gdSelCompletedCat = null;
+  var gdLastPendingSig = null;
+  var gdLastCompletedSig = null;
+  var gdCollapsed = {};
+  var gdAdminPending = [];
+
+  function gdSafe(key){ return String(key).replace(/[^a-zA-Z0-9]/g, '_'); }
+  function gdNewId(prefix){ return prefix + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase(); }
+  function gdErrHtml(msg){ return '<div class="status err">' + escapeHtml(msg) + '</div>'; }
+  function gdOkHtml(msg){ return '<div class="status ok">' + escapeHtml(msg) + '</div>'; }
+
+  // ---------- Categories ----------
+  function gdGetCategories(){
+    return sb.from('goods_categories').select('name').order('id', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return res.data.map(function(r){ return r.name; });
+      });
+  }
+
+  function gdPopulateCategorySelect(){
+    var sel = document.getElementById('gdCategorySelect');
+    if(!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">Select category...</option>';
+    gdCategories.forEach(function(c){
+      var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+    if(cur && gdCategories.indexOf(cur) !== -1) sel.value = cur;
+  }
+
+  // Startup: categories + pending (silent) + restore an unfinished entry.
+  function gdInit(){
+    return gdGetCategories()
+      .then(function(c){
+        gdCategories = c;
+        gdPopulateCategorySelect();
+        var d = gdLoadDraft();
+        if(d && d.staff && d.supervisor && d.category && gdCategories.indexOf(d.category) !== -1){
+          gdSession = { staff: d.staff, supervisor: d.supervisor, category: d.category };
+          gdCart = d.cart || [];
+          document.getElementById('gdStaffInput').value = d.staff;
+          document.getElementById('gdSupervisorInput').value = d.supervisor;
+          document.getElementById('gdCategorySelect').value = d.category;
+          gdEnterStep2();
+          gdRenderCart();
+        }
+      })
+      .catch(function(err){
+        var el = document.getElementById('gdStep1Status');
+        if(el) el.innerHTML = gdErrHtml('Goods tables not ready: ' + err.message + ' (run goods-disposal-schema.sql in Supabase)');
+      })
+      .then(function(){ return gdLoadPending({ silent: true, force: true }).catch(function(){}); })
+      .then(refreshHomeDashboard);
+  }
+
+  // ---------- Draft (survives refresh) ----------
+  function gdSaveDraft(){
+    try {
+      localStorage.setItem(GD_DRAFT_KEY, JSON.stringify({
+        plant: currentOutletPlant, staff: gdSession.staff, supervisor: gdSession.supervisor,
+        category: gdSession.category, cart: gdCart
+      }));
+    } catch(e){}
+  }
+  function gdLoadDraft(){
+    try {
+      var d = JSON.parse(localStorage.getItem(GD_DRAFT_KEY) || 'null');
+      if(d && d.plant === currentOutletPlant) return d;
+    } catch(e){}
+    return null;
+  }
+  function gdClearDraft(){ try { localStorage.removeItem(GD_DRAFT_KEY); } catch(e){} }
+
+  // ---------- New Entry: steps ----------
+  function gdGoToStep2(){
+    var staff = document.getElementById('gdStaffInput').value.trim();
+    var sup = document.getElementById('gdSupervisorInput').value.trim();
+    var cat = document.getElementById('gdCategorySelect').value;
+    var st = document.getElementById('gdStep1Status');
+    if(!staff || !sup || !cat){
+      st.innerHTML = gdErrHtml('Please fill in staff, supervisor and category.');
+      return;
+    }
+    st.innerHTML = '';
+    // Changing category/staff with items already in the list would mix them
+    // into the wrong transaction, so require the list to be empty first.
+    if(gdCart.length && (staff !== gdSession.staff || sup !== gdSession.supervisor || cat !== gdSession.category)){
+      st.innerHTML = gdErrHtml('Your list already has items for ' + gdSession.category + '. Submit or cancel that entry before changing staff, supervisor or category.');
+      return;
+    }
+    gdSession = { staff: staff, supervisor: sup, category: cat };
+    gdEnterStep2();
+    gdSaveDraft();
+  }
+  function gdEnterStep2(){
+    document.getElementById('gdSummaryOutlet').textContent = outletLabel(currentOutletPlant);
+    document.getElementById('gdSummaryStaff').textContent = gdSession.staff;
+    document.getElementById('gdSummarySupervisor').textContent = gdSession.supervisor;
+    document.getElementById('gdSummaryCategory').textContent = gdSession.category;
+    document.getElementById('gdStep1View').style.display = 'none';
+    document.getElementById('gdStep2View').style.display = 'block';
+    var inp = document.getElementById('gdScanInput'); if(inp) inp.focus();
+  }
+  function gdBackToStep1(){
+    document.getElementById('gdStep2View').style.display = 'none';
+    document.getElementById('gdStep1View').style.display = 'block';
+  }
+  function gdCancelEntry(){
+    if(gdCart.length && !confirm('Discard this entry? Items you have added but not submitted will be lost.')) return;
+    gdResetEntry();
+  }
+  function gdResetEntry(){
+    gdSession = { staff: '', supervisor: '', category: '' };
+    gdCart = []; gdProduct = null; gdMatches = [];
+    gdClearDraft();
+    ['gdStaffInput', 'gdSupervisorInput', 'gdScanInput', 'gdQtyInput'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('gdCategorySelect').value = '';
+    document.getElementById('gdReasonInput').value = '';
+    document.getElementById('gdProductResult').style.display = 'none';
+    document.getElementById('gdSearchHint').innerHTML = '';
+    document.getElementById('gdSubmitStatus').innerHTML = '';
+    gdRenderCart();
+    gdBackToStep1();
+  }
+
+  // ---------- New Entry: barcode lookup ----------
+  document.getElementById('gdScanInput').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); gdSearch(); }
+  });
+
+  // Exact EAN first; if nothing, exact Material (which can return several
+  // rows - one per sales unit - so the person picks the right one).
+  function gdLookup(code){
+    return sb.from('goods_masterlist').select('*').eq('ean', code).limit(25)
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        if(res.data.length) return res.data;
+        return sb.from('goods_masterlist').select('*').eq('material', code).order('sales_unit').limit(50)
+          .then(function(r2){
+            if(r2.error) throw new Error(r2.error.message);
+            return r2.data;
+          });
+      });
+  }
+
+  function gdSearch(){
+    var code = document.getElementById('gdScanInput').value.trim();
+    var hint = document.getElementById('gdSearchHint');
+    document.getElementById('gdProductResult').style.display = 'none';
+    gdProduct = null; gdMatches = [];
+    if(!code){ hint.innerHTML = gdErrHtml('Enter or scan a product code first.'); return; }
+    if(!navigator.onLine){ hint.innerHTML = gdErrHtml('You are offline. Searching needs a connection.'); return; }
+    var token = ++gdSearchToken;
+    hint.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    gdLookup(code).then(function(rows){
+      if(token !== gdSearchToken) return;
+      if(!rows.length){
+        hint.innerHTML = gdErrHtml('No product found for "' + code + '". Ask Admin to add it to the Goods masterlist.');
+        return;
+      }
+      hint.innerHTML = '';
+      gdMatches = rows;
+      var wrap = document.getElementById('gdChooserWrap');
+      if(rows.length > 1){
+        var sel = document.getElementById('gdChooser');
+        sel.innerHTML = '';
+        rows.forEach(function(r, i){
+          var o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = (r.sales_unit || '-') + ' · numerator ' + (r.numerator == null ? '-' : r.numerator) + ' · ' + (r.ean || '-');
+          sel.appendChild(o);
+        });
+        wrap.style.display = 'block';
+      } else {
+        wrap.style.display = 'none';
+      }
+      gdPickMatch(0);
+      document.getElementById('gdQtyInput').value = '';
+      document.getElementById('gdReasonInput').value = '';
+      document.getElementById('gdProductResult').style.display = 'block';
+      document.getElementById('gdQtyInput').focus();
+    }).catch(function(err){
+      if(token !== gdSearchToken) return;
+      hint.innerHTML = gdErrHtml(err.message);
+    });
+  }
+
+  function gdPickMatch(i){
+    var r = gdMatches[Number(i) || 0];
+    if(!r) return;
+    gdProduct = r;
+    document.getElementById('gdPrDesc').textContent = r.description || '-';
+    document.getElementById('gdPrUnit').textContent = r.sales_unit || '-';
+    document.getElementById('gdPrNum').textContent = r.numerator == null ? '-' : r.numerator;
+    document.getElementById('gdPrDept').textContent = r.department || '-';
+    document.getElementById('gdPrMat').textContent = r.material || '-';
+    document.getElementById('gdPrEan').textContent = r.ean || '-';
+  }
+
+  function gdInsertItem(){
+    var hint = document.getElementById('gdSearchHint');
+    if(!gdProduct){ hint.innerHTML = gdErrHtml('Search for a product first.'); return; }
+    var qty = Number(document.getElementById('gdQtyInput').value);
+    var reason = document.getElementById('gdReasonInput').value;
+    if(!qty || qty <= 0){ hint.innerHTML = gdErrHtml('Enter a valid quantity.'); return; }
+    qty = Math.round(qty * 100) / 100;
+    if(qty > GD_MAX_QTY){ hint.innerHTML = gdErrHtml('Quantity cannot exceed ' + GD_MAX_QTY + '.'); return; }
+    if(!reason){ hint.innerHTML = gdErrHtml('Select a reason.'); return; }
+
+    var p = gdProduct;
+    var existing = gdCart.find(function(it){ return it.ean === (p.ean || '') && it.material === p.material && it.reason === reason; });
+    if(existing){
+      var sum = Math.round((existing.qty + qty) * 100) / 100;
+      if(sum > GD_MAX_QTY){ hint.innerHTML = gdErrHtml('Combined quantity for this item would exceed ' + GD_MAX_QTY + '.'); return; }
+      existing.qty = sum;
+    } else {
+      gdCart.push({
+        ean: p.ean || '', material: p.material, description: p.description || '',
+        salesUnit: p.sales_unit || '', numerator: p.numerator, department: p.department || '',
+        qty: qty, reason: reason
+      });
+    }
+    hint.innerHTML = '';
+    gdProduct = null; gdMatches = [];
+    document.getElementById('gdProductResult').style.display = 'none';
+    document.getElementById('gdScanInput').value = '';
+    document.getElementById('gdScanInput').focus();
+    gdRenderCart();
+    gdSaveDraft();
+  }
+
+  function gdRenderCart(){
+    var list = document.getElementById('gdCartList');
+    document.getElementById('gdCartCount').textContent = gdCart.length;
+    document.getElementById('gdCartPlural').textContent = gdCart.length === 1 ? '' : 's';
+    document.getElementById('gdCartEmpty').style.display = gdCart.length ? 'none' : 'block';
+    document.getElementById('gdSubmitBtn').disabled = !gdCart.length;
+    list.innerHTML = gdCart.map(function(it, idx){
+      return '<div class="cart-item">' +
+        '<div class="cart-top">' +
+          '<div style="min-width:0;">' +
+            '<div class="cart-desc">' + escapeHtml(it.description || '(no description)') + '</div>' +
+            '<div class="cart-sub">Material ' + escapeHtml(it.material) + ' &middot; ' + escapeHtml(it.ean || '-') + ' &middot; ' + escapeHtml(it.salesUnit || '-') + '</div>' +
+            '<div class="cart-sub"><span class="cat-tag">' + escapeHtml(it.reason) + '</span></div>' +
+          '</div>' +
+          '<div class="cart-total"><small>Qty</small><input type="number" class="gd-cart-qty" min="1" max="' + GD_MAX_QTY + '" step="1" value="' + it.qty + '" data-idx="' + idx + '"></div>' +
+          '<span class="remove-btn" data-idx="' + idx + '" onclick="gdRemoveCartItem(this)">&times;</span>' +
+        '</div></div>';
+    }).join('');
+  }
+  document.getElementById('gdCartList').addEventListener('change', function(e){
+    if(!e.target.classList.contains('gd-cart-qty')) return;
+    var idx = parseInt(e.target.dataset.idx, 10);
+    var v = Number(e.target.value);
+    if(!v || v <= 0 || v > GD_MAX_QTY){
+      e.target.value = gdCart[idx].qty;
+      alert('Quantity must be between 1 and ' + GD_MAX_QTY + '.');
+      return;
+    }
+    gdCart[idx].qty = Math.round(v * 100) / 100;
+    gdSaveDraft();
+  });
+  function gdRemoveCartItem(el){
+    var idx = parseInt(el.dataset.idx, 10);
+    gdCart.splice(idx, 1);
+    gdRenderCart();
+    gdSaveDraft();
+  }
+
+  // ---------- New Entry: submit ----------
+  function gdDayRows(plant, category, staff, supervisor, when){
+    var b = dayBoundsISO(when);
+    return sb.from('bad_stock_goods').select('id, batch_id, ean, material, reason, quantity')
+      .eq('status', 'pending').eq('plant', plant).eq('category', category)
+      .eq('staff', staff).eq('supervisor', supervisor)
+      .gte('entry_date', b.startISO).lt('entry_date', b.endISO)
+      .order('id', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return res.data;
+      });
+  }
+
+  // Same-day stacking: same outlet + category + staff + supervisor joins
+  // the existing pending transaction; same barcode + reason sums quantity.
+  function gdSubmitToSupabase(plant, category, staff, supervisor, items){
+    var when = new Date();
+    return gdDayRows(plant, category, staff, supervisor, when).then(function(rows){
+      var batchId = rows.length ? rows[0].batch_id : gdNewId('G');
+      var byKey = {};
+      rows.filter(function(r){ return r.batch_id === batchId; }).forEach(function(r){
+        byKey[(r.ean || '') + '|' + (r.material || '') + '|' + r.reason] = r;
+      });
+      var ops = [], newRows = [];
+      items.forEach(function(it){
+        var ex = byKey[it.ean + '|' + it.material + '|' + it.reason];
+        if(ex){
+          var q = Math.round((Number(ex.quantity) + it.qty) * 100) / 100;
+          ops.push(sb.from('bad_stock_goods').update({ quantity: q }).eq('id', ex.id));
+        } else {
+          newRows.push({
+            batch_id: batchId, entry_date: when.toISOString(), category: category,
+            staff: staff, supervisor: supervisor, ean: it.ean, material: it.material,
+            description: it.description, sales_unit: it.salesUnit,
+            numerator: (it.numerator === '' || it.numerator == null) ? null : it.numerator,
+            department: it.department, quantity: it.qty, reason: it.reason,
+            plant: plant, sloc: '1000', status: 'pending'
+          });
+        }
+      });
+      if(newRows.length) ops.push(sb.from('bad_stock_goods').insert(newRows));
+      return Promise.all(ops).then(function(results){
+        results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+        return true;
+      });
+    });
+  }
+
+  function gdSubmitCart(){
+    var st = document.getElementById('gdSubmitStatus');
+    if(!gdCart.length) return;
+    if(!navigator.onLine){
+      st.innerHTML = gdErrHtml('You are offline. Your list is saved on this device - submit again once the connection returns.');
+      return;
+    }
+    var items = gdCart.slice();
+    var s = { staff: gdSession.staff, supervisor: gdSession.supervisor, category: gdSession.category };
+    document.getElementById('gdSubmitBtn').disabled = true;
+    st.innerHTML = '';
+    showBusy('Submitting goods entry...');
+    gdSubmitToSupabase(currentOutletPlant, s.category, s.staff, s.supervisor, items)
+      .then(function(){
+        hideBusy();
+        gdCart = [];
+        gdClearDraft();
+        gdLastPendingSig = null;
+        gdLoadPending({ silent: true, force: true }).catch(function(){}).then(refreshHomeDashboard);
+        gdShowSummary(s, items, function(){ gdResetEntry(); });
+      })
+      .catch(function(err){
+        hideBusy();
+        document.getElementById('gdSubmitBtn').disabled = false;
+        st.innerHTML = gdErrHtml('Error: ' + err.message + ' - check Disposal Records > Goods before submitting again.');
+      });
+  }
+
+  function gdShowSummary(s, items, onClose){
+    var old = document.getElementById('submitSummaryOverlay');
+    if(old) old.parentNode.removeChild(old);
+    var overlay = document.createElement('div');
+    overlay.id = 'submitSummaryOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
+    overlay.innerHTML =
+      '<div class="card" style="max-width:420px;width:100%;margin:0;max-height:90vh;overflow:auto;">' +
+        '<h2 style="margin-top:0;">&#10003; Submitted successfully</h2>' +
+        '<div class="pending-meta"><b>' + escapeHtml(s.staff) + '</b> &middot; ' + escapeHtml(s.supervisor) + '</div>' +
+        '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th></tr></thead>' +
+        '<tbody><tr><td>' + escapeHtml(s.category) + '</td><td style="text-align:right;">' + items.length + '</td></tr></tbody></table>' +
+        '<button class="btn btn-full" id="gdSummaryOk">OK</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.getElementById('gdSummaryOk').addEventListener('click', function(){
+      overlay.parentNode.removeChild(overlay);
+      if(onClose) onClose();
+    });
+  }
+
+  // ---------- Disposal Records (Goods): data ----------
+  function gdGroupRows(rows, completed){
+    var batches = {}, order = [];
+    rows.forEach(function(row){
+      if(!batches[row.batch_id]){
+        batches[row.batch_id] = {
+          txnId: row.batch_id, category: row.category, staff: row.staff, supervisor: row.supervisor,
+          entryDate: row.entry_date, dateDisplay: formatDateDisplay(row.entry_date),
+          materialDocument: completed ? (row.material_document || '') : '',
+          keyInBy: completed ? (row.key_in_by || '') : '',
+          items: []
+        };
+        order.push(row.batch_id);
+      }
+      batches[row.batch_id].items.push({
+        id: row.id, ean: row.ean || '', material: row.material || '', description: row.description || '',
+        salesUnit: row.sales_unit || '', numerator: row.numerator, department: row.department || '',
+        qty: Number(row.quantity), reason: row.reason
+      });
+    });
+    return order.map(function(k){ return batches[k]; });
+  }
+
+  function gdGetPendingFromSupabase(){
+    return sb.from('bad_stock_goods').select('*').eq('status', 'pending').eq('plant', currentOutletPlant)
+      .order('entry_date', { ascending: true }).order('id', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return gdGroupRows(res.data, false);
+      });
+  }
+
+  function gdGetCompletedFromSupabase(fromStr, toStr){
+    var from = new Date(fromStr + 'T00:00:00');
+    var to = new Date(toStr + 'T23:59:59.999');
+    return sb.from('bad_stock_goods').select('*').eq('status', 'keyed_in').eq('plant', currentOutletPlant)
+      .gte('entry_date', from.toISOString()).lte('entry_date', to.toISOString())
+      .order('entry_date', { ascending: false }).order('id', { ascending: true })
+      .then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        return gdGroupRows(res.data, true);
+      });
+  }
+
+  function gdLoadPending(opts){
+    opts = opts || {};
+    var silent = !!opts.silent;
+    if(!silent){
+      document.getElementById('gdCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+      document.getElementById('gdPendingList').innerHTML = '';
+      document.getElementById('gdPendingEmpty').style.display = 'none';
+      document.getElementById('gdPendingCategoryEmpty').style.display = 'none';
+    }
+    return gdGetPendingFromSupabase().then(function(entries){
+      var sig = JSON.stringify(entries);
+      if(silent && !opts.force && sig === gdLastPendingSig) return;
+      gdLastPendingSig = sig;
+
+      // keep just-submitted cards (Print Here) through refreshes
+      var kept = (silent || opts.force) ? gdPending.filter(function(b){
+        var d = gdDraft[b.txnId];
+        return d && d.submitted && !entries.some(function(e){ return e.txnId === b.txnId; });
+      }) : [];
+      gdPending = entries.concat(kept);
+      document.getElementById('gdPendingCount').textContent = entries.length;
+
+      entries.forEach(function(batch){
+        var key = batch.txnId;
+        var d = gdDraft[key];
+        if(!d){
+          gdDraft[key] = {
+            items: batch.items.map(function(it){ return Object.assign({}, it, { dirty: false }); }),
+            removedIds: [], materialDocument: '', keyInBy: '', submitted: null
+          };
+        } else if(!d.submitted){
+          var freshById = {}, seen = {};
+          batch.items.forEach(function(f){ freshById[f.id] = f; });
+          d.items.forEach(function(it){
+            seen[it.id] = true;
+            var f = freshById[it.id];
+            if(f && !it.dirty) it.qty = f.qty;
+          });
+          batch.items.forEach(function(f){
+            if(!seen[f.id] && d.removedIds.indexOf(f.id) === -1) d.items.push(Object.assign({}, f, { dirty: false }));
+          });
+        }
+      });
+
+      if(gdSelPendingCat && !gdPending.some(function(b){ return b.category === gdSelPendingCat; })) gdSelPendingCat = null;
+      gdRenderCategoryPicker();
+      gdRenderPendingFiltered();
+      gdUpdateRecordCounts();
+    }).catch(function(err){
+      if(silent) throw err;
+      document.getElementById('gdCategoryPicker').innerHTML = '';
+      document.getElementById('gdPendingList').innerHTML = gdErrHtml('Failed to load pending goods entries: ' + err.message);
+    });
+  }
+
+  function gdUpdateRecordCounts(){
+    var fm = document.getElementById('recCountFm');
+    var gd = document.getElementById('recCountGd');
+    if(fm) fm.textContent = String(homeFmPendingCount());
+    if(gd) gd.textContent = String(gdPending.filter(function(b){ var d = gdDraft[b.txnId]; return !(d && d.submitted); }).length);
+  }
+
+  function gdRenderCategoryPicker(){
+    var picker = document.getElementById('gdCategoryPicker');
+    picker.innerHTML = '';
+    gdCategories.forEach(function(cat){
+      var count = gdPending.filter(function(b){ return b.category === cat; }).length;
+      var chip = document.createElement('div');
+      chip.className = 'category-chip' + (gdSelPendingCat === cat ? ' active' : '');
+      chip.innerHTML = escapeHtml(cat) + ' <span class="count">' + count + '</span>';
+      chip.onclick = function(){ gdSelPendingCat = cat; gdRenderCategoryPicker(); gdRenderPendingFiltered(); };
+      picker.appendChild(chip);
+    });
+  }
+
+  function gdRenderPendingFiltered(){
+    var container = document.getElementById('gdPendingList');
+    var emptyEl = document.getElementById('gdPendingEmpty');
+    var catEmpty = document.getElementById('gdPendingCategoryEmpty');
+    if(!gdSelPendingCat){
+      container.innerHTML = ''; emptyEl.style.display = 'none'; catEmpty.style.display = 'block'; return;
+    }
+    catEmpty.style.display = 'none';
+    var filtered = gdPending.filter(function(b){ return b.category === gdSelPendingCat; });
+    if(!filtered.length){ container.innerHTML = ''; emptyEl.style.display = 'block'; return; }
+    emptyEl.style.display = 'none';
+    gdRenderPendingList(filtered);
+  }
+
+  function gdSwitchSubView(view){
+    gdSubView = view;
+    document.getElementById('gdPendingSubView').style.display = view === 'pending' ? 'block' : 'none';
+    document.getElementById('gdCompletedSubView').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('gdHeaderPending').style.display = view === 'pending' ? 'block' : 'none';
+    document.getElementById('gdHeaderCompleted').style.display = view === 'completed' ? 'block' : 'none';
+    document.getElementById('gdSubTabPending').classList.toggle('active', view === 'pending');
+    document.getElementById('gdSubTabCompleted').classList.toggle('active', view === 'completed');
+    if(view === 'completed') gdInitCompletedDates();
+  }
+
+  function gdDateValue(d){
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function gdInitCompletedDates(){
+    var f = document.getElementById('gdCompletedDateFrom'), t = document.getElementById('gdCompletedDateTo');
+    if(f.value && t.value) return;
+    var from = new Date(); from.setDate(from.getDate() - 30);
+    f.value = gdDateValue(from); t.value = gdDateValue(new Date());
+  }
+  function gdRunCompleted(){
+    var f = document.getElementById('gdCompletedDateFrom').value;
+    var t = document.getElementById('gdCompletedDateTo').value;
+    var st = document.getElementById('gdCompletedDateStatus');
+    if(!f || !t){ st.innerHTML = gdErrHtml('Please select both Date From and Date To.'); return; }
+    if(f > t){ st.innerHTML = gdErrHtml('Date From must be on or before Date To.'); return; }
+    st.innerHTML = '';
+    gdLoadCompleted(f, t);
+  }
+
+  function gdLoadCompleted(fromVal, toVal, opts){
+    opts = opts || {};
+    var silent = !!opts.silent;
+    fromVal = fromVal || document.getElementById('gdCompletedDateFrom').value;
+    toVal = toVal || document.getElementById('gdCompletedDateTo').value;
+    if(!fromVal || !toVal) return Promise.resolve();
+    if(!silent){
+      document.getElementById('gdCompletedCategoryPicker').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+      document.getElementById('gdCompletedList').innerHTML = '';
+      document.getElementById('gdCompletedEmpty').style.display = 'none';
+      document.getElementById('gdCompletedCategoryEmpty').style.display = 'none';
+    }
+    return gdGetCompletedFromSupabase(fromVal, toVal).then(function(entries){
+      var sig = fromVal + '|' + toVal + '|' + JSON.stringify(entries);
+      if(silent && !opts.force && sig === gdLastCompletedSig) return;
+      gdLastCompletedSig = sig;
+      gdCompleted = entries;
+      document.getElementById('gdCompletedCount').textContent = entries.length;
+      if(gdSelCompletedCat && !entries.some(function(b){ return b.category === gdSelCompletedCat; })) gdSelCompletedCat = null;
+      gdRenderCompletedCategoryPicker();
+      gdRenderCompletedFiltered();
+    }).catch(function(err){
+      if(silent) throw err;
+      document.getElementById('gdCompletedCategoryPicker').innerHTML = '';
+      document.getElementById('gdCompletedList').innerHTML = gdErrHtml('Failed to load completed goods entries: ' + err.message);
+    });
+  }
+
+  function gdRenderCompletedCategoryPicker(){
+    var picker = document.getElementById('gdCompletedCategoryPicker');
+    picker.innerHTML = '';
+    gdCategories.forEach(function(cat){
+      var count = gdCompleted.filter(function(b){ return b.category === cat; }).length;
+      var chip = document.createElement('div');
+      chip.className = 'category-chip' + (gdSelCompletedCat === cat ? ' active' : '');
+      chip.innerHTML = escapeHtml(cat) + ' <span class="count">' + count + '</span>';
+      chip.onclick = function(){ gdSelCompletedCat = cat; gdRenderCompletedCategoryPicker(); gdRenderCompletedFiltered(); };
+      picker.appendChild(chip);
+    });
+  }
+
+  function gdRenderCompletedFiltered(){
+    var container = document.getElementById('gdCompletedList');
+    var emptyEl = document.getElementById('gdCompletedEmpty');
+    var catEmpty = document.getElementById('gdCompletedCategoryEmpty');
+    if(!gdSelCompletedCat){
+      container.innerHTML = ''; emptyEl.style.display = 'none'; catEmpty.style.display = 'block'; return;
+    }
+    catEmpty.style.display = 'none';
+    var filtered = gdCompleted.filter(function(b){ return b.category === gdSelCompletedCat; });
+    if(!filtered.length){ container.innerHTML = ''; emptyEl.style.display = 'block'; return; }
+    emptyEl.style.display = 'none';
+    container.innerHTML = '';
+    filtered.forEach(function(batch){
+      var key = batch.txnId;
+      gdDraft[key] = {
+        items: batch.items, removedIds: [], materialDocument: batch.materialDocument, keyInBy: batch.keyInBy,
+        submitted: gdPrintData(batch, batch.materialDocument, batch.keyInBy, batch.items)
+      };
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+        '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div></div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
+        ' &middot; ' + batch.items.length + ' item' + (batch.items.length === 1 ? '' : 's') + '</div>' +
+        '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(batch.materialDocument) + '</div>' +
+        '<button class="btn secondary btn-full" onclick="gdPrintBatch(\'' + key + '\')">Print Here</button>';
+      container.appendChild(card);
+    });
+  }
+
+  // ---------- Pending cards ----------
+  function gdIsCollapsed(key, n){
+    if(gdCollapsed[key] !== undefined) return gdCollapsed[key];
+    return n > 1;
+  }
+  function gdToggleCard(headerEl, key){
+    var body = headerEl.parentNode.querySelector('.pending-body');
+    if(!body) return;
+    var nowCollapsed = body.style.display !== 'none';
+    body.style.display = nowCollapsed ? 'none' : '';
+    gdCollapsed[key] = nowCollapsed;
+    var chev = headerEl.querySelector('.pending-chevron');
+    if(chev) chev.textContent = nowCollapsed ? '▸' : '▾';
+  }
+
+  function gdRenderPendingList(batches){
+    var container = document.getElementById('gdPendingList');
+    container.innerHTML = '';
+    batches.forEach(function(batch){
+      var key = batch.txnId;
+      var d = gdDraft[key];
+      var card = document.createElement('div');
+      card.className = 'card';
+
+      if(d.submitted){
+        card.innerHTML =
+          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div></div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+          '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(d.materialDocument) + '</div>' +
+          '<button class="btn secondary btn-full" onclick="gdPrintBatch(\'' + key + '\')">Print Here</button>';
+        container.appendChild(card);
+        return;
+      }
+
+      var itemsHtml = d.items.map(function(it, idx){
+        return '<tr>' +
+          '<td>' + escapeHtml(it.description || '(no description)') +
+            '<div class="sap-reason-note">Material ' + escapeHtml(it.material) + ' &middot; ' + escapeHtml(it.ean || '-') + '</div></td>' +
+          '<td>' + escapeHtml(it.salesUnit || '—') + '</td>' +
+          '<td><input type="number" min="1" max="' + GD_MAX_QTY + '" step="1" value="' + it.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="gd-pending-qty"></td>' +
+          '<td>' + escapeHtml(it.reason) + '</td>' +
+          '<td><span class="remove-btn" data-key="' + key + '" data-idx="' + idx + '" onclick="gdRemovePendingItem(this)">&times;</span></td>' +
+        '</tr>';
+      }).join('');
+
+      var safeKey = gdSafe(key);
+      var collapsed = gdIsCollapsed(key, batches.length);
+      card.innerHTML =
+        '<div class="pending-toggle" onclick="gdToggleCard(this, \'' + key + '\')">' +
+          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '▸' : '▾') + '</span></div></div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
+          ' &middot; ' + d.items.length + ' item' + (d.items.length === 1 ? '' : 's') + '</div>' +
+        '</div>' +
+        '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
+        '<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Reason</th><th></th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
+        '<button class="btn secondary btn-full" onclick="gdSaveChanges(\'' + key + '\')">Save Changes</button>' +
+        '<div id="gdSaveStatus_' + safeKey + '"></div>' +
+        '<button class="btn secondary btn-full" onclick="gdPrintBatch(\'' + key + '\')">Print Here</button>' +
+        gdSapSectionHtml(key, d) +
+        '<hr class="divider">' +
+        '<label>Material Document</label>' +
+        '<input type="text" class="gd-matdoc" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number">' +
+        '<label>Key In By</label>' +
+        '<input type="text" class="gd-keyinby" data-key="' + key + '" value="' + escapeHtml(d.keyInBy) + '" placeholder="Enter your name">' +
+        '<button class="btn btn-full" onclick="gdSubmitBatch(\'' + key + '\')">Submit</button>' +
+        '<div id="gdSubmitStatus_' + safeKey + '"></div>' +
+        '</div>';
+      container.appendChild(card);
+    });
+
+    container.querySelectorAll('.gd-pending-qty').forEach(function(input){
+      input.addEventListener('change', function(){
+        var it = gdDraft[input.dataset.key].items[parseInt(input.dataset.idx, 10)];
+        var v = Number(input.value);
+        if(!v || v <= 0 || v > GD_MAX_QTY){
+          input.value = it.qty;
+          alert('Quantity must be between 1 and ' + GD_MAX_QTY + '.');
+          return;
+        }
+        it.qty = Math.round(v * 100) / 100;
+        it.dirty = true;
+        input.value = it.qty;
+      });
+    });
+    container.querySelectorAll('.gd-matdoc').forEach(function(input){
+      input.addEventListener('input', function(){ gdDraft[input.dataset.key].materialDocument = input.value; });
+    });
+    container.querySelectorAll('.gd-keyinby').forEach(function(input){
+      input.addEventListener('input', function(){ gdDraft[input.dataset.key].keyInBy = input.value; });
+    });
+  }
+
+  function gdRemovePendingItem(el){
+    var d = gdDraft[el.dataset.key];
+    var idx = parseInt(el.dataset.idx, 10);
+    if(d.items.length <= 1){
+      alert('A transaction must have at least one item. To remove the whole transaction use Admin > Delete Pending Goods Transaction.');
+      return;
+    }
+    var it = d.items[idx];
+    if(!confirm('Remove this item?\n\n' + (it.description || it.material) + '\nQty ' + it.qty + ' ' + (it.salesUnit || '') + ' · ' + it.reason +
+        '\n\nIt will be removed when you tap Save Changes or Submit.')) return;
+    d.items.splice(idx, 1);
+    if(it.id) d.removedIds.push(it.id);
+    gdRenderPendingFiltered();
+  }
+
+  // Writes qty edits + removals for one transaction.
+  function gdPersistDraft(key){
+    var d = gdDraft[key];
+    var ops = [];
+    d.items.forEach(function(it){
+      if(it.id && it.dirty) ops.push(sb.from('bad_stock_goods').update({ quantity: it.qty }).eq('id', it.id));
+    });
+    if(d.removedIds.length) ops.push(sb.from('bad_stock_goods').delete().in('id', d.removedIds));
+    return Promise.all(ops).then(function(results){
+      results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+      d.items.forEach(function(it){ it.dirty = false; });
+      d.removedIds = [];
+    });
+  }
+
+  function gdSaveChanges(key){
+    var st = document.getElementById('gdSaveStatus_' + gdSafe(key));
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+    gdPersistDraft(key).then(function(){
+      gdLastPendingSig = null;
+      st.innerHTML = gdOkHtml('Changes saved.');
+    }).catch(function(err){
+      st.innerHTML = gdErrHtml('Error: ' + err.message);
+    });
+  }
+
+  // ---------- Duplicate material document check (both disposal types) ----------
+  function gdFindDuplicateDoc(doc, ownKey){
+    return Promise.all([
+      sb.from('bad_stock_goods').select('batch_id, category, staff, entry_date, plant').eq('material_document', doc).neq('batch_id', ownKey).limit(1),
+      sb.from('bad_stock_fresh_market').select('batch_id, category, staff, entry_date, plant').eq('material_document', doc).limit(1)
+    ]).then(function(rs){
+      rs.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+      var g = rs[0].data[0], f = rs[1].data[0];
+      if(g) return 'Goods: ' + (g.category || '-') + ', ' + (g.staff || '-') + ', ' + formatDateDisplay(g.entry_date) + ' (' + g.plant + ')';
+      if(f) return 'Fresh Market: ' + (f.category || '-') + ', ' + (f.staff || '-') + ', ' + formatDateDisplay(f.entry_date) + ' (' + f.plant + ')';
+      return null;
+    });
+  }
+
+  function gdPrintData(batch, doc, keyInBy, items){
+    return {
+      date: batch.dateDisplay, category: batch.category, staff: batch.staff, supervisor: batch.supervisor,
+      materialDocument: doc || '', keyInBy: keyInBy || '', items: items
+    };
+  }
+
+  function gdSubmitBatch(key){
+    var d = gdDraft[key];
+    var batch = gdPending.find(function(b){ return b.txnId === key; });
+    var st = document.getElementById('gdSubmitStatus_' + gdSafe(key));
+    if(!d || !batch) return;
+    var focus = function(cls){ var f = document.querySelector('.' + cls + '[data-key="' + key + '"]'); if(f) f.focus(); };
+    if(!d.materialDocument || !d.materialDocument.trim()){ st.innerHTML = gdErrHtml('Material Document is required.'); focus('gd-matdoc'); return; }
+    if(!d.keyInBy || !d.keyInBy.trim()){ st.innerHTML = gdErrHtml('Key In By is required.'); focus('gd-keyinby'); return; }
+    var doc = d.materialDocument.trim(), by = d.keyInBy.trim();
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
+    showBusy('Submitting transaction...');
+
+    gdFindDuplicateDoc(doc, key).then(function(dup){
+      if(dup){
+        hideBusy();
+        if(!confirm('Material Document ' + doc + ' is already used by another transaction:\n\n' + dup + '\n\nThis may be a typo. Submit anyway?')){
+          st.innerHTML = gdErrHtml('Cancelled. Please check the Material Document number.');
+          focus('gd-matdoc');
+          return null;
+        }
+        showBusy('Submitting transaction...');
+      }
+      return gdPersistDraft(key).then(function(){
+        return sb.from('bad_stock_goods').update({
+          material_document: doc, key_in_by: by, key_in_date: new Date().toISOString(), status: 'keyed_in'
+        }).eq('batch_id', key);
+      }).then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        d.submitted = gdPrintData(batch, doc, by, d.items);
+        d.materialDocument = doc; d.keyInBy = by;
+        st.innerHTML = '';
+        hideBusy();
+        gdRenderPendingFiltered();
+        gdUpdateRecordCounts();
+        refreshHomeDashboard();
+      });
+    }).catch(function(err){
+      hideBusy();
+      st.innerHTML = gdErrHtml('Error: ' + err.message);
+    });
+  }
+
+  // ---------- Copy to SAP (Material, Qty, UOM, Plant, SLoc, Reason) ----------
+  function gdSapTotalChunks(d){
+    return Math.max(1, Math.ceil(d.items.length / (d.sapChunkSize || GD_SAP_CHUNK)));
+  }
+  function gdSapSectionHtml(key, d){
+    if(d.sapChunkSize === undefined) d.sapChunkSize = GD_SAP_CHUNK;
+    if(d.sapChunkIndex === undefined) d.sapChunkIndex = 0;
+    var total = gdSapTotalChunks(d);
+    if(d.sapChunkIndex >= total) d.sapChunkIndex = total - 1;
+    if(d.sapChunkIndex < 0) d.sapChunkIndex = 0;
+    var size = d.sapChunkSize, start = d.sapChunkIndex * size;
+    var chunk = d.items.slice(start, start + size);
+    var safeKey = gdSafe(key);
+    var copiedMap = d.sapCopied || {};
+    var thisCopied = !!copiedMap[d.sapChunkIndex];
+    var copiedCount = Object.keys(copiedMap).length;
+
+    var rowsHtml = chunk.map(function(it){
+      var sap = gdSapReason(it.reason);
+      return '<tr><td>' + escapeHtml(it.material) + '</td><td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.salesUnit || '') + '</td>' +
+        '<td>' + escapeHtml(currentOutletPlant) + '</td><td>1000</td>' +
+        '<td>' + (sap ? escapeHtml(sap) : '<span class="sap-reason-note">blank</span>') + ' <span class="sap-reason-note">' + escapeHtml(it.reason) + '</span></td></tr>';
+    }).join('');
+
+    return '<hr class="divider">' +
+      '<h2><span class="step-badge">&#128203;</span> Copy to SAP</h2>' +
+      '<div class="pending-meta" style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+        '<span>Batch ' + (d.sapChunkIndex + 1) + ' of ' + total + ' &middot; ' + chunk.length + ' row' + (chunk.length === 1 ? '' : 's') +
+        (thisCopied ? ' &middot; <b style="color:#2f7d4f;">&#10003; Copied</b>' : '') + ' &middot; ' + copiedCount + '/' + total + ' copied</span>' +
+        '<span style="display:flex;align-items:center;gap:6px;"><label style="margin:0;text-transform:none;font-size:12.5px;">Rows per batch</label>' +
+        '<input type="number" min="1" max="50" step="1" value="' + size + '" style="width:60px;padding:5px 8px;" onchange="gdSetSapChunk(\'' + key + '\', this.value)"></span>' +
+      '</div>' +
+      '<table><thead><tr><th>Material</th><th>Qty</th><th>UOM</th><th>Plant</th><th>SLoc</th><th>Reason</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '<div class="btn-row">' +
+        '<button class="btn ghost" ' + (d.sapChunkIndex <= 0 ? 'disabled' : '') + ' onclick="gdSapPrev(\'' + key + '\')">Prev</button>' +
+        '<button class="btn secondary" onclick="gdCopySap(\'' + key + '\')">' + (thisCopied ? 'Copy Again' : 'Copy Batch') + '</button>' +
+        '<button class="btn ghost" ' + (d.sapChunkIndex >= total - 1 ? 'disabled' : '') + ' onclick="gdSapNext(\'' + key + '\')">Next</button>' +
+      '</div>' +
+      '<div id="gdSapStatus_' + safeKey + '">' + (d.sapNotice ? gdOkHtml(d.sapNotice) : '') + '</div>';
+  }
+  function gdSetSapChunk(key, value){
+    var d = gdDraft[key]; var n = parseInt(value, 10);
+    if(!n || n < 1) n = 1;
+    d.sapChunkSize = n; d.sapChunkIndex = 0; d.sapCopied = {}; d.sapNotice = '';
+    gdRenderPendingFiltered();
+  }
+  function gdSapPrev(key){ var d = gdDraft[key]; d.sapChunkIndex = Math.max(0, (d.sapChunkIndex || 0) - 1); d.sapNotice = ''; gdRenderPendingFiltered(); }
+  function gdSapNext(key){ var d = gdDraft[key]; d.sapChunkIndex = Math.min(gdSapTotalChunks(d) - 1, (d.sapChunkIndex || 0) + 1); d.sapNotice = ''; gdRenderPendingFiltered(); }
+  function gdCopySap(key){
+    var d = gdDraft[key];
+    var size = d.sapChunkSize || GD_SAP_CHUNK;
+    var chunk = d.items.slice((d.sapChunkIndex || 0) * size, (d.sapChunkIndex || 0) * size + size);
+    var st = document.getElementById('gdSapStatus_' + gdSafe(key));
+    var tsv = chunk.map(function(it){
+      return [it.material, it.qty, it.salesUnit || '', currentOutletPlant, '1000', gdSapReason(it.reason)].join('\t');
+    }).join('\n');
+    navigator.clipboard.writeText(tsv).then(function(){
+      if(!d.sapCopied) d.sapCopied = {};
+      var idx = d.sapChunkIndex || 0;
+      d.sapCopied[idx] = true;
+      var total = gdSapTotalChunks(d);
+      d.sapNotice = 'Copied batch ' + (idx + 1) + ' of ' + total + ' (' + chunk.length + ' row' + (chunk.length === 1 ? '' : 's') + ').';
+      if(idx < total - 1){ d.sapChunkIndex = idx + 1; d.sapNotice += ' Moved to batch ' + (idx + 2) + '.'; }
+      else d.sapNotice += ' That was the last batch.';
+      gdRenderPendingFiltered();
+    }).catch(function(err){
+      st.innerHTML = gdErrHtml('Copy failed: ' + err.message);
+    });
+  }
+
+  // ---------- Print Here (only option - no Print Station) ----------
+  function gdPrintBatch(key){
+    var d = gdDraft[key];
+    if(!d) return;
+    if(d.submitted){ gdOpenPrint(d.submitted); return; }
+    var batch = gdPending.find(function(b){ return b.txnId === key; });
+    if(!batch) return;
+    gdOpenPrint(gdPrintData(batch, d.materialDocument, d.keyInBy, d.items));
+  }
+
+  function gdOpenPrint(p){
+    var rows = p.items.map(function(it){
+      return '<tr><td>' + escapeHtml(it.material) + '</td><td>' + escapeHtml(it.ean) + '</td><td>' + escapeHtml(it.description) + '</td>' +
+        '<td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.salesUnit) + '</td><td>' + escapeHtml(it.reason) + '</td></tr>';
+    }).join('');
+    var outletName = outletShortName(currentOutletPlant);
+    var html =
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Goods Disposal</title><style>' +
+      'body{font-family:Georgia,"Times New Roman",serif;color:#222;margin:32px;}' +
+      '.title{text-align:center;font-size:20px;font-weight:700;letter-spacing:0.5px;margin-bottom:2px;}' +
+      '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
+      '.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
+      '.meta div span{color:#666;}.meta div b{display:block;font-size:14px;}' +
+      'table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:30px;}' +
+      'thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
+      '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
+      'th,td{border:1px solid #999;padding:7px 8px;text-align:left;}' +
+      'th.col-head{background:#eee;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;}' +
+      '.sign-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:50px;page-break-inside:avoid;}' +
+      '.sign-box{font-size:12px;}.sign-line{border-top:1px solid #333;margin-top:40px;padding-top:6px;}' +
+      '.sign-label{font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:0.4px;color:#444;}' +
+      '@media print{body{margin:12mm;}}' +
+      '</style></head><body><table><thead>' +
+        '<tr><th colspan="6" class="doc-head-cell">' +
+          '<div class="title">' + escapeHtml(outletName) + ' &mdash; Goods Disposal</div>' +
+          '<div class="subtitle">Bad Stock Goods Report</div>' +
+          '<div class="meta">' +
+            '<div><span>Date</span><b>' + escapeHtml(p.date) + '</b></div>' +
+            '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
+            '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
+            '<div><span>Supervisor</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
+            '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
+            '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+          '</div></th></tr>' +
+        '<tr><th class="col-head">Material</th><th class="col-head">Product Code</th><th class="col-head">Description</th><th class="col-head">Qty</th><th class="col-head">Unit</th><th class="col-head">Reason</th></tr>' +
+      '</thead><tbody>' + rows + '</tbody></table>' +
+      '<div class="sign-grid">' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor</div>' + escapeHtml(p.supervisor) + '</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Manager</div>&nbsp;</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Key In By</div>' + escapeHtml(p.keyInBy) + '</div>' +
+      '</div></body></html>';
+
+    var old = document.getElementById('printFrame');
+    if(old) old.parentNode.removeChild(old);
+    var frame = document.createElement('iframe');
+    frame.id = 'printFrame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(frame);
+    var fdoc = frame.contentWindow.document;
+    fdoc.open(); fdoc.write(html); fdoc.close();
+    setTimeout(function(){
+      try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+      catch(e){ alert('Could not open the print dialog: ' + e.message); }
+    }, 300);
+  }
+
+  // ---------- Admin: Goods ----------
+  function gdAdminInit(){
+    gdLoadAdminPending();
+  }
+
+  function gdAdminAddCategory(){
+    var name = document.getElementById('gdNewCategoryInput').value.trim();
+    var st = document.getElementById('gdNewCategoryStatus');
+    if(!name){ st.innerHTML = gdErrHtml('Enter a category name.'); return; }
+    if(gdCategories.some(function(c){ return c.toLowerCase() === name.toLowerCase(); })){ st.innerHTML = gdErrHtml('This category already exists.'); return; }
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+    sb.from('goods_categories').insert([{ name: name }]).then(function(res){
+      if(res.error) throw new Error(res.error.message);
+      return gdGetCategories();
+    }).then(function(c){
+      gdCategories = c;
+      gdPopulateCategorySelect();
+      gdRenderCategoryPicker();
+      document.getElementById('gdNewCategoryInput').value = '';
+      st.innerHTML = gdOkHtml('Category added.');
+    }).catch(function(err){ st.innerHTML = gdErrHtml('Error: ' + err.message); });
+  }
+
+  function gdAdminSaveItem(){
+    var st = document.getElementById('gdAdmSaveStatus');
+    var rec = {
+      material: document.getElementById('gdAdmMaterial').value.trim(),
+      description: document.getElementById('gdAdmDesc').value.trim(),
+      sales_unit: document.getElementById('gdAdmUnit').value.trim(),
+      numerator: document.getElementById('gdAdmNum').value.trim(),
+      ean: document.getElementById('gdAdmEan').value.trim(),
+      department: document.getElementById('gdAdmDept').value.trim()
+    };
+    if(!rec.material){ st.innerHTML = gdErrHtml('Material is required.'); return; }
+    if(!rec.ean){ st.innerHTML = gdErrHtml('EAN / UPC is required.'); return; }
+    rec.numerator = rec.numerator === '' ? null : Number(rec.numerator);
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
+    // One row per barcode: update the row with this EAN if present, else insert.
+    sb.from('goods_masterlist').select('id').eq('ean', rec.ean).limit(1).then(function(res){
+      if(res.error) throw new Error(res.error.message);
+      if(res.data.length) return sb.from('goods_masterlist').update(rec).eq('id', res.data[0].id).then(function(r){ return { r: r, updated: true }; });
+      return sb.from('goods_masterlist').insert([rec]).then(function(r){ return { r: r, updated: false }; });
+    }).then(function(o){
+      if(o.r.error) throw new Error(o.r.error.message);
+      st.innerHTML = gdOkHtml(o.updated ? 'Existing barcode updated.' : 'New barcode added.');
+      ['gdAdmMaterial', 'gdAdmDesc', 'gdAdmUnit', 'gdAdmNum', 'gdAdmEan', 'gdAdmDept'].forEach(function(id){ document.getElementById(id).value = ''; });
+    }).catch(function(err){ st.innerHTML = gdErrHtml('Error: ' + err.message); });
+  }
+
+  var gdAdmFound = [];
+  function gdAdminSearch(){
+    var code = document.getElementById('gdAdmSearchInput').value.trim();
+    var st = document.getElementById('gdAdmSearchStatus');
+    var out = document.getElementById('gdAdmSearchResult');
+    out.innerHTML = '';
+    if(!code){ st.innerHTML = gdErrHtml('Enter a barcode or material.'); return; }
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    gdLookup(code).then(function(rows){
+      gdAdmFound = rows;
+      if(!rows.length){ st.innerHTML = gdErrHtml('Not found in the Goods masterlist.'); return; }
+      st.innerHTML = '';
+      out.innerHTML = rows.map(function(r, i){
+        return '<div class="card"><div class="cart-desc">' + escapeHtml(r.description || '') + '</div>' +
+          '<div class="cart-sub">Material ' + escapeHtml(r.material) + ' &middot; ' + escapeHtml(r.ean || '-') + ' &middot; ' + escapeHtml(r.sales_unit || '-') +
+          ' &middot; numerator ' + (r.numerator == null ? '-' : escapeHtml(String(r.numerator))) + ' &middot; ' + escapeHtml(r.department || '-') + '</div>' +
+          '<button class="btn ghost btn-full" onclick="gdAdminLoadIntoForm(' + i + ')">Edit in the form above</button></div>';
+      }).join('');
+    }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
+  }
+  function gdAdminLoadIntoForm(i){
+    var r = gdAdmFound[i]; if(!r) return;
+    document.getElementById('gdAdmMaterial').value = r.material || '';
+    document.getElementById('gdAdmDesc').value = r.description || '';
+    document.getElementById('gdAdmUnit').value = r.sales_unit || '';
+    document.getElementById('gdAdmNum').value = r.numerator == null ? '' : r.numerator;
+    document.getElementById('gdAdmEan').value = r.ean || '';
+    document.getElementById('gdAdmDept').value = r.department || '';
+    document.getElementById('gdAdmSaveStatus').innerHTML = gdOkHtml('Loaded - change what you need, then Save.');
+    document.getElementById('gdAdmMaterial').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function gdLoadAdminPending(){
+    document.getElementById('gdAdminPendingList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    document.getElementById('gdAdminPendingEmpty').style.display = 'none';
+    return gdGetPendingFromSupabase().then(function(entries){
+      gdAdminPending = entries;
+      gdRenderAdminPending();
+    }).catch(function(err){
+      document.getElementById('gdAdminPendingList').innerHTML = gdErrHtml('Failed to load pending goods transactions: ' + err.message);
+    });
+  }
+  function gdRenderAdminPending(){
+    var c = document.getElementById('gdAdminPendingList');
+    c.innerHTML = '';
+    if(!gdAdminPending.length){ document.getElementById('gdAdminPendingEmpty').style.display = 'block'; return; }
+    document.getElementById('gdAdminPendingEmpty').style.display = 'none';
+    gdAdminPending.forEach(function(b){
+      var list = b.items.map(function(it){ return escapeHtml(it.description || it.material) + ' &times; ' + escapeHtml(String(it.qty)) + ' ' + escapeHtml(it.salesUnit) + ' (' + escapeHtml(it.reason) + ')'; }).join(', ');
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(b.category) + '</span></div><div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + '</div>' +
+        '<div class="pending-meta" style="margin-top:8px;">' + list + '</div>' +
+        '<button class="btn danger btn-full" onclick="gdDeleteAdminBatch(\'' + b.txnId + '\')">Delete Transaction</button>' +
+        '<div id="gdAdminDelStatus_' + gdSafe(b.txnId) + '"></div>';
+      c.appendChild(card);
+    });
+  }
+  function gdDeleteAdminBatch(key){
+    var b = gdAdminPending.find(function(x){ return x.txnId === key; });
+    if(!b) return;
+    if(!confirm('Delete this pending goods transaction?\n\n' + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
+        '\n\nThis permanently removes it from Supabase and cannot be undone.')) return;
+    var st = document.getElementById('gdAdminDelStatus_' + gdSafe(key));
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
+    sb.from('bad_stock_goods').delete().eq('batch_id', key).then(function(res){
+      if(res.error) throw new Error(res.error.message);
+      gdAdminPending = gdAdminPending.filter(function(x){ return x.txnId !== key; });
+      gdPending = gdPending.filter(function(x){ return x.txnId !== key; });
+      delete gdDraft[key];
+      gdLastPendingSig = null;
+      gdRenderAdminPending();
+      refreshHomeDashboard();
+    }).catch(function(err){ st.innerHTML = gdErrHtml('Error: ' + err.message); });
+  }
+
+  // =====================================================================
+  // ================= DOCUMENTS (both disposal types) ===================
+  // =====================================================================
+  function docsGroup(rows, type){
+    var by = {}, order = [];
+    rows.forEach(function(r){
+      if(!by[r.batch_id]){
+        by[r.batch_id] = { type: type, category: r.category, staff: r.staff, supervisor: r.supervisor,
+          dateDisplay: formatDateDisplay(r.entry_date), doc: r.material_document, keyInBy: r.key_in_by,
+          keyInDate: r.key_in_date, items: 0, qty: 0 };
+        order.push(r.batch_id);
+      }
+      by[r.batch_id].items++; by[r.batch_id].qty += Number(r.quantity) || 0;
+    });
+    return order.map(function(k){ return by[k]; });
+  }
+  function docsCards(list){
+    if(!list.length) return '<div class="empty">Nothing found.</div>';
+    return list.map(function(b){
+      return '<div class="card" style="margin-bottom:12px;">' +
+        '<div class="pending-card-header"><div><span class="type-tag ' + (b.type === 'fm' ? 'fm' : 'gd') + '">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span>' +
+        '<span class="cat-tag">' + escapeHtml(b.category || '-') + '</span></div>' +
+        '<div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + ' &middot; ' + b.items + ' item' + (b.items === 1 ? '' : 's') + '</div>' +
+        '<div class="status ok" style="margin-top:10px;">Material Document ' + escapeHtml(b.doc || '') + ' &middot; keyed in by ' + escapeHtml(b.keyInBy || '-') +
+        (b.keyInDate ? ' &middot; ' + escapeHtml(formatDateDisplay(b.keyInDate)) : '') + '</div></div>';
+    }).join('');
+  }
+  function docsQuery(builder){
+    return Promise.all([
+      builder(sb.from('bad_stock_fresh_market').select('*')),
+      builder(sb.from('bad_stock_goods').select('*'))
+    ]).then(function(rs){
+      rs.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+      var all = docsGroup(rs[0].data, 'fm').concat(docsGroup(rs[1].data, 'gd'));
+      all.sort(function(a, b){ return String(b.keyInDate || '').localeCompare(String(a.keyInDate || '')); });
+      return all;
+    });
+  }
+  function docsSearch(){
+    var doc = document.getElementById('docsSearchInput').value.trim();
+    var st = document.getElementById('docsSearchStatus');
+    var out = document.getElementById('docsSearchResult');
+    out.innerHTML = '';
+    if(!doc){ st.innerHTML = gdErrHtml('Enter a material document number.'); return; }
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    docsQuery(function(q){ return q.eq('material_document', doc).eq('plant', currentOutletPlant); }).then(function(list){
+      st.innerHTML = list.length ? '' : gdErrHtml('No transaction uses material document ' + doc + ' at ' + outletLabel(currentOutletPlant) + '.');
+      out.innerHTML = list.length ? docsCards(list) : '';
+    }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
+  }
+  function docsLoadRecent(){
+    var el = document.getElementById('docsRecent');
+    docsQuery(function(q){ return q.eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('key_in_date', { ascending: false }).limit(60); })
+      .then(function(list){ el.innerHTML = docsCards(list.slice(0, 15)); })
+      .catch(function(err){ el.innerHTML = gdErrHtml(err.message); });
   }
 
   // ================= SHARED =================
