@@ -697,7 +697,7 @@
         <label>Category Name</label>
         <input type="text" id="newCategoryInput" placeholder="e.g. Bakery">
         <button class="btn btn-full" onclick="submitNewCategory()">Save Category</button>
-        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Shared with the Masterlist — a category added here shows up on both 1008-SHBN and 1015-SHPL's devices, across New Entry, IT Entry, and every Masterlist tool.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Shared with the Masterlist — a category added here shows up on every outlet's devices, across New Entry, IT Entry, and every Masterlist tool.</p>
         <div id="newCategoryStatus"></div>
       </div>
 
@@ -1456,7 +1456,8 @@
   // no outlet field at all and always stays shared between outlets.
   var OUTLET_OPTIONS = [
     { plant: '1008', label: '1008-SHBN', shortName: 'SHBN' },
-    { plant: '1015', label: '1015-SHPL', shortName: 'SHPL' }
+    { plant: '1015', label: '1015-SHPL', shortName: 'SHPL' },
+    { plant: '1007', label: '1007-SHPP', shortName: 'SHPP' }
   ];
   var DEFAULT_OUTLET_PLANT = '1008';
   var OUTLET_STORAGE_KEY = 'shbn_bad_stock_outlet_v1';
