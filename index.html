@@ -3478,7 +3478,7 @@
       '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
       'th,td{border:1px solid #999;padding:8px 10px;text-align:left;}' +
       'th.col-head{background:#eee;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;}' +
-      '.sign-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:50px;page-break-inside:avoid;}' +
+      '.sign-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:60px;margin-top:50px;page-break-inside:avoid;}' +
       '.sign-box{font-size:12px;}' +
       '.sign-line{border-top:1px solid #333;margin-top:40px;padding-top:6px;}' +
       '.sign-label{font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:0.4px;color:#444;}' +
@@ -3505,8 +3505,6 @@
       '<div class="sign-grid">' +
         '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
         '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor</div>' + escapeHtml(p.supervisor) + '</div>' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Manager</div>&nbsp;</div>' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Key In By</div>' + escapeHtml(p.keyInBy) + '</div>' +
       '</div>' +
       '</body></html>';
 
@@ -5149,7 +5147,7 @@
       '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
       'th,td{border:1px solid #999;padding:7px 8px;text-align:left;}' +
       'th.col-head{background:#eee;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;}' +
-      '.sign-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:50px;page-break-inside:avoid;}' +
+      '.sign-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:60px;margin-top:50px;page-break-inside:avoid;}' +
       '.sign-box{font-size:12px;}.sign-line{border-top:1px solid #333;margin-top:40px;padding-top:6px;}' +
       '.sign-label{font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:0.4px;color:#444;}' +
       '@media print{body{margin:12mm;}}' +
@@ -5170,8 +5168,6 @@
       '<div class="sign-grid">' +
         '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
         '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor</div>' + escapeHtml(p.supervisor) + '</div>' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Manager</div>&nbsp;</div>' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Key In By</div>' + escapeHtml(p.keyInBy) + '</div>' +
       '</div></body></html>';
 
     var old = document.getElementById('printFrame');
