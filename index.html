@@ -314,6 +314,8 @@
     </div>
     <button class="sidebar-link" id="sideBtnIt" onclick="openRecords()" title="Disposal Records"><span class="sidebar-icon">▤</span><span class="sidebar-label">Disposal Records</span></button>
     <button class="sidebar-link" id="sideBtnDocs" onclick="showTab('docs')" title="Documents"><span class="sidebar-icon">❐</span><span class="sidebar-label">Documents</span></button>
+    <button class="sidebar-link" id="sideBtnMaster" onclick="showTab('master')" title="Masterlist Update"><span class="sidebar-icon">☰</span><span class="sidebar-label">Masterlist Update</span></button>
+    <button class="sidebar-link" id="sideBtnStore" onclick="showTab('store')" title="Store Assignment"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Store Assignment</span></button>
     <button class="sidebar-link" id="sideBtnAdmin" onclick="showTab('admin')" title="Admin"><span class="sidebar-icon">⚙</span><span class="sidebar-label">Admin</span></button>
   </nav>
   <div class="sidebar-spacer"></div>
@@ -672,12 +674,7 @@
 
   <!-- ============ ADMIN TAB ============ -->
   <div id="adminTabView" style="display:none;">
-    <h2 class="page-heading">Admin</h2>
-    <div class="records-bar" id="adminTabsBar" style="display:flex;">
-      <button id="adminTabBtnStore" class="active" onclick="adminSwitchPane('store')">Store Assignment</button>
-      <button id="adminTabBtnMaster" onclick="adminSwitchPane('master')">Masterlist Update</button>
-      <button id="adminTabBtnAdmin" onclick="adminSwitchPane('admin')">&#128274; Admin</button>
-    </div>
+    <h2 class="page-heading" id="adminPageHeading">Store Assignment</h2>
 
     <div id="adminPaneStore">
       <div class="card">
@@ -1563,15 +1560,15 @@
   }
 
   // ---------- Tab switching ----------
-  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', admin:'adminTabView' };
-  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', admin:'sideBtnAdmin' };
+  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', store:'adminTabView', master:'adminTabView', admin:'adminTabView' };
+  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', store:'sideBtnStore', master:'sideBtnMaster', admin:'sideBtnAdmin' };
   var lastRecordsType = 'it';
 
   function showTab(tab){
     currentTab = tab;
     Object.keys(TAB_VIEWS).forEach(function(k){
       var el = document.getElementById(TAB_VIEWS[k]);
-      if(el) el.style.display = k === tab ? 'block' : 'none';
+      if(el) el.style.display = TAB_VIEWS[k] === TAB_VIEWS[tab] ? 'block' : 'none';
     });
     var bar = document.getElementById('recordsBar');
     if(bar) bar.style.display = (tab === 'it' || tab === 'git') ? 'flex' : 'none';
@@ -1579,7 +1576,7 @@
     if(recFm) recFm.classList.toggle('active', tab === 'it');
     if(recGd) recGd.classList.toggle('active', tab === 'git');
 
-    ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnAdmin'].forEach(function(id){
+    ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnMaster','sideBtnStore','sideBtnAdmin'].forEach(function(id){
       var el = document.getElementById(id);
       if(el) el.classList.toggle('active', TAB_SIDE[tab] === id);
     });
@@ -1598,7 +1595,7 @@
       gdLoadPending().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
       loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
-    if(tab === 'admin'){ populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
+    if(tab === 'admin' || tab === 'master' || tab === 'store'){ adminSwitchPane(tab); populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
     if(tab === 'docs') docsLoadRecent();
     if(tab === 'home'){
       refreshHomeDashboard();
@@ -5279,7 +5276,7 @@
     document.getElementById('gdAdmNum').value = r.numerator == null ? '' : r.numerator;
     document.getElementById('gdAdmEan').value = r.ean || '';
     document.getElementById('gdAdmDept').value = r.department || '';
-    adminSwitchPane('master');
+    showTab('master');
     document.getElementById('gdAdmSaveStatus').innerHTML = gdOkHtml('Loaded - change what you need, then Save.');
     document.getElementById('gdAdmMaterial').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -5392,10 +5389,10 @@
   function adminSwitchPane(name){
     ['Store','Master','Admin'].forEach(function(n){
       var pane = document.getElementById('adminPane' + n);
-      var btn = document.getElementById('adminTabBtn' + n);
       if(pane) pane.style.display = n.toLowerCase() === name ? 'block' : 'none';
-      if(btn) btn.classList.toggle('active', n.toLowerCase() === name);
     });
+    var h = document.getElementById('adminPageHeading');
+    if(h) h.textContent = name === 'master' ? 'Masterlist Update' : (name === 'admin' ? 'Admin' : 'Store Assignment');
   }
 
   // ================= SHARED =================
