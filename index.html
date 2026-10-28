@@ -30,6 +30,8 @@
     .sync-box.warn .sync-dot{background:#c58a1b;}
     .sync-box.busy .sync-dot{background:#c58a1b;animation:pulse 1s infinite;}
     @keyframes pulse{50%{opacity:.3;}}
+    #firstOutletOverlay{position:fixed;inset:0;z-index:9999;background:var(--bg,#f4efe9);display:none;align-items:center;justify-content:center;padding:16px;}
+    #firstOutletOverlay .card{width:100%;max-width:420px;margin:0;}
     .sync-btn{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:7px;padding:4px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
     .sync-btn:disabled{opacity:.5;cursor:default;}
     .brand-mark{
@@ -299,6 +301,18 @@
   </style>
 </head>
 <body>
+<div id="firstOutletOverlay">
+  <div class="card">
+    <h2 style="margin-top:0;">Choose outlet</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">This device has not been assigned to an outlet yet. Select the outlet this device belongs to and enter its password. This is only asked once per device.</p>
+    <label>Outlet</label>
+    <select id="firstOutletSelect"></select>
+    <label style="margin-top:12px;">Outlet password</label>
+    <input type="password" id="firstOutletPassword" autocomplete="off" placeholder="Password for this outlet" onkeydown="if(event.key==='Enter') confirmFirstOutlet();">
+    <button class="btn btn-full" onclick="confirmFirstOutlet()">Continue</button>
+    <div id="firstOutletStatus"></div>
+  </div>
+</div>
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="sidebar-brand">
     <div class="sidebar-logo">DR</div>
@@ -1427,8 +1441,41 @@
   var selectedCompletedCategory = null;
 
   // ---------- Startup: load masterlist once, cache client-side ----------
+  var outletPending = false;
+  function hasStoredOutlet(){
+    try { return !!localStorage.getItem(OUTLET_STORAGE_KEY); } catch(e){ return false; }
+  }
+  function confirmFirstOutlet(){
+    var plant = document.getElementById('firstOutletSelect').value;
+    var pw = document.getElementById('firstOutletPassword');
+    var st = document.getElementById('firstOutletStatus');
+    if(!pw.value || pw.value.trim() !== OUTLET_PASSWORDS[plant]){
+      st.innerHTML = '<div class="status err">' + (pw.value ? 'Wrong password for ' : 'Enter the password for ') + escapeHtml(outletLabel(plant)) + '.</div>';
+      pw.value = ''; pw.focus();
+      return;
+    }
+    try { localStorage.setItem(OUTLET_STORAGE_KEY, plant); } catch(e){ /* still applies for this page load */ }
+    currentOutletPlant = plant;
+    outletPending = false;
+    pw.value = '';
+    document.getElementById('firstOutletOverlay').style.display = 'none';
+    applyOutletBranding();
+    startApp();
+  }
   window.addEventListener('DOMContentLoaded', function(){
     applySidebarPreference();
+    if(!hasStoredOutlet()){
+      outletPending = true;
+      var sel = document.getElementById('firstOutletSelect');
+      sel.innerHTML = '<option value="">- Select outlet -</option>' + OUTLET_OPTIONS.map(function(o){
+        return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>';
+      }).join('');
+      document.getElementById('firstOutletOverlay').style.display = 'flex';
+      return;
+    }
+    startApp();
+  });
+  function startApp(){
     refreshHomeDashboard();
     getMasterlistFromSupabase()
       .then(function(list){
@@ -1441,7 +1488,7 @@
         document.getElementById('loadingView').innerHTML =
           '<div class="status err">Failed to load product list: ' + err.message + '</div>';
       });
-  });
+  }
 
   // Categories live in Supabase (a `categories` table) rather than being
   // hardcoded per-repo — this is what lets Admin add a new one from
@@ -2523,7 +2570,7 @@
   // when due (unless paused for typing / popups / hidden tab).
   setInterval(function(){
     updateSyncUi();
-    if(document.hidden || syncInFlight) return;
+    if(outletPending || document.hidden || syncInFlight) return;
     if(Date.now() < nextRefreshAt) return;
     if((currentTab === 'it' || currentTab === 'git') && (userIsEditing() || overlayOpen())) return; // try again next second
     autoRefreshNow();
