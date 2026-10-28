@@ -672,16 +672,14 @@
 
   <!-- ============ ADMIN TAB ============ -->
   <div id="adminTabView" style="display:none;">
-    <div class="card" id="adminLockView">
-      <h2><span class="step-badge">&#128274;</span> Admin Access</h2>
-      <label>Password</label>
-      <input type="password" id="adminPasswordInput" placeholder="Enter admin password">
-      <button class="btn btn-full" onclick="unlockAdmin()">Unlock</button>
-      <div id="adminLockStatus"></div>
+    <h2 class="page-heading">Admin</h2>
+    <div class="records-bar" id="adminTabsBar" style="display:flex;">
+      <button id="adminTabBtnStore" class="active" onclick="adminSwitchPane('store')">Store Assignment</button>
+      <button id="adminTabBtnMaster" onclick="adminSwitchPane('master')">Masterlist Update</button>
+      <button id="adminTabBtnAdmin" onclick="adminSwitchPane('admin')">&#128274; Admin</button>
     </div>
 
-    <div id="adminUnlockedView" style="display:none;">
-      <div class="admin-section" style="margin-top:0;">Outlet</div>
+    <div id="adminPaneStore">
       <div class="card">
         <h2><span class="step-badge">&#127970;</span> Outlet Settings</h2>
         <label>Current Outlet</label>
@@ -691,16 +689,10 @@
         <div id="outletSettingStatus"></div>
       </div>
 
-      <div class="admin-section">Fresh Market Disposal</div>
-      <div class="card">
-        <h2><span class="step-badge">+</span> Add New Category</h2>
-        <label>Category Name</label>
-        <input type="text" id="newCategoryInput" placeholder="e.g. Bakery">
-        <button class="btn btn-full" onclick="submitNewCategory()">Save Category</button>
-        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Shared with the Masterlist — a category added here shows up on every outlet's devices, across New Entry, IT Entry, and every Masterlist tool.</p>
-        <div id="newCategoryStatus"></div>
-      </div>
+    </div>
 
+    <div id="adminPaneMaster" style="display:none;">
+      <div class="admin-section" style="margin-top:0;">Fresh Market Disposal</div>
       <div class="card">
         <h2><span class="step-badge">+</span> Add / Update Masterlist Item</h2>
         <label>PLU Code</label>
@@ -719,32 +711,7 @@
         <div id="adminSaveStatus"></div>
       </div>
 
-      <div class="card">
-        <h2><span class="step-badge">&#128269;</span> Edit Existing Masterlist Item</h2>
-        <label>PLU Code</label>
-        <input type="text" id="masterlistSearchInput" placeholder="Enter PLU code to search" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMasterlistItem();}">
-        <button class="btn btn-full" onclick="searchMasterlistItem()">Search</button>
-        <div id="masterlistSearchStatus"></div>
-      </div>
-      <div id="masterlistSearchResult"></div>
-
-      <div class="card">
-        <h2><span class="step-badge">&#128465;</span> Delete Pending Transaction</h2>
-        <button class="btn ghost" style="margin-top:0;" onclick="loadAdminPendingList()">Refresh List</button>
-      </div>
-      <div id="adminPendingEmpty" class="empty" style="display:none;">No pending transactions.</div>
-      <div id="adminPendingList"></div>
-
       <div class="admin-section">Goods Disposal</div>
-
-      <div class="card">
-        <h2><span class="step-badge">+</span> Add New Goods Category</h2>
-        <label>Category Name</label>
-        <input type="text" id="gdNewCategoryInput" placeholder="e.g. Bad Stock Others">
-        <button class="btn btn-full" onclick="gdAdminAddCategory()">Save Category</button>
-        <div id="gdNewCategoryStatus"></div>
-      </div>
-
       <div class="card">
         <h2><span class="step-badge">+</span> Add / Update Goods Masterlist Item</h2>
         <label>Material</label>
@@ -763,6 +730,53 @@
         <div id="gdAdmSaveStatus"></div>
       </div>
 
+    </div>
+
+    <div id="adminPaneAdmin" style="display:none;">
+    <div class="card" id="adminLockView">
+      <h2><span class="step-badge">&#128274;</span> Admin Access</h2>
+      <label>Password</label>
+      <input type="password" id="adminPasswordInput" placeholder="Enter admin password">
+      <button class="btn btn-full" onclick="unlockAdmin()">Unlock</button>
+      <div id="adminLockStatus"></div>
+    </div>
+
+      <div id="adminUnlockedView" style="display:none;">
+        <div class="admin-section" style="margin-top:0;">Fresh Market Disposal</div>
+      <div class="card">
+        <h2><span class="step-badge">+</span> Add New Category</h2>
+        <label>Category Name</label>
+        <input type="text" id="newCategoryInput" placeholder="e.g. Bakery">
+        <button class="btn btn-full" onclick="submitNewCategory()">Save Category</button>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Shared with the Masterlist — a category added here shows up on every outlet's devices, across New Entry, IT Entry, and every Masterlist tool.</p>
+        <div id="newCategoryStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step-badge">&#128269;</span> Edit Existing Masterlist Item</h2>
+        <label>PLU Code</label>
+        <input type="text" id="masterlistSearchInput" placeholder="Enter PLU code to search" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMasterlistItem();}">
+        <button class="btn btn-full" onclick="searchMasterlistItem()">Search</button>
+        <div id="masterlistSearchStatus"></div>
+      </div>
+      <div id="masterlistSearchResult"></div>
+
+      <div class="card">
+        <h2><span class="step-badge">&#128465;</span> Delete Pending Transaction</h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="loadAdminPendingList()">Refresh List</button>
+      </div>
+      <div id="adminPendingEmpty" class="empty" style="display:none;">No pending transactions.</div>
+      <div id="adminPendingList"></div>
+
+        <div class="admin-section">Goods Disposal</div>
+      <div class="card">
+        <h2><span class="step-badge">+</span> Add New Goods Category</h2>
+        <label>Category Name</label>
+        <input type="text" id="gdNewCategoryInput" placeholder="e.g. Bad Stock Others">
+        <button class="btn btn-full" onclick="gdAdminAddCategory()">Save Category</button>
+        <div id="gdNewCategoryStatus"></div>
+      </div>
+
       <div class="card">
         <h2><span class="step-badge">&#128269;</span> Find Goods Masterlist Item</h2>
         <label>Barcode or Material</label>
@@ -778,6 +792,7 @@
       </div>
       <div id="gdAdminPendingEmpty" class="empty" style="display:none;">No pending goods transactions.</div>
       <div id="gdAdminPendingList"></div>
+      </div>
     </div>
   </div>
 
@@ -1583,6 +1598,7 @@
       gdLoadPending().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
       loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
+    if(tab === 'admin'){ populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
     if(tab === 'docs') docsLoadRecent();
     if(tab === 'home'){
       refreshHomeDashboard();
@@ -2477,7 +2493,7 @@
         appCategories = r[1];
         lastMasterlistAt = Date.now();
         updateCategorySubtitle();
-        if(adminUnlocked){ populateAdminCategoryDropdown(); }
+        populateAdminCategoryDropdown();
         var tasks = [flushOutbox(), loadPendingEntries(o), loadProblemPlus(o)];
         var from = document.getElementById('completedDateFrom').value;
         var to = document.getElementById('completedDateTo').value;
@@ -5251,7 +5267,7 @@
         return '<div class="card"><div class="cart-desc">' + escapeHtml(r.description || '') + '</div>' +
           '<div class="cart-sub">Material ' + escapeHtml(r.material) + ' &middot; ' + escapeHtml(r.ean || '-') + ' &middot; ' + escapeHtml(r.sales_unit || '-') +
           ' &middot; numerator ' + (r.numerator == null ? '-' : escapeHtml(String(r.numerator))) + ' &middot; ' + escapeHtml(r.department || '-') + '</div>' +
-          '<button class="btn ghost btn-full" onclick="gdAdminLoadIntoForm(' + i + ')">Edit in the form above</button></div>';
+          '<button class="btn ghost btn-full" onclick="gdAdminLoadIntoForm(' + i + ')">Edit in Masterlist Update</button></div>';
       }).join('');
     }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
   }
@@ -5263,6 +5279,7 @@
     document.getElementById('gdAdmNum').value = r.numerator == null ? '' : r.numerator;
     document.getElementById('gdAdmEan').value = r.ean || '';
     document.getElementById('gdAdmDept').value = r.department || '';
+    adminSwitchPane('master');
     document.getElementById('gdAdmSaveStatus').innerHTML = gdOkHtml('Loaded - change what you need, then Save.');
     document.getElementById('gdAdmMaterial').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -5369,6 +5386,16 @@
     docsQuery(function(q){ return q.eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('key_in_date', { ascending: false }).limit(60); })
       .then(function(list){ el.innerHTML = docsCards(list.slice(0, 15)); })
       .catch(function(err){ el.innerHTML = gdErrHtml(err.message); });
+  }
+
+  // ---------- Admin page tabs ----------
+  function adminSwitchPane(name){
+    ['Store','Master','Admin'].forEach(function(n){
+      var pane = document.getElementById('adminPane' + n);
+      var btn = document.getElementById('adminTabBtn' + n);
+      if(pane) pane.style.display = n.toLowerCase() === name ? 'block' : 'none';
+      if(btn) btn.classList.toggle('active', n.toLowerCase() === name);
+    });
   }
 
   // ================= SHARED =================
