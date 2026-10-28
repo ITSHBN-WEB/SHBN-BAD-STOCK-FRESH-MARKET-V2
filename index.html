@@ -681,6 +681,8 @@
         <h2><span class="step-badge">&#127970;</span> Outlet Settings</h2>
         <label>Current Outlet</label>
         <select id="adminOutletSelect"></select>
+        <label style="margin-top:12px;">Outlet password</label>
+        <input type="password" id="outletPasswordInput" autocomplete="off" placeholder="Password for the outlet you are switching to" onkeydown="if(event.key==='Enter') saveOutletSetting();">
         <button class="btn btn-full" onclick="saveOutletSetting()">Save Outlet</button>
         <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, Disposal Records (Fresh Market and Goods) and Documents. The masterlists stay shared between outlets.</p>
         <div id="outletSettingStatus"></div>
@@ -3551,6 +3553,7 @@
   // thing still depending on that legacy backend, and this gate is a
   // simple deterrent, not real security, either way.
   var ADMIN_PASSWORD = '8888';
+  var OUTLET_PASSWORDS = { '1008': '1144SHBN', '1015': '2255SHPL', '1007': '3366SHPP' };
 
   function unlockAdmin(){
     var pw = document.getElementById('adminPasswordInput').value;
@@ -3589,6 +3592,15 @@
       return;
     }
 
+    var pwEl = document.getElementById('outletPasswordInput');
+    if(!pwEl.value || pwEl.value.trim() !== OUTLET_PASSWORDS[selected]){
+      statusEl.innerHTML = '<div class="status err">' + (pwEl.value ? 'Wrong password for ' : 'Enter the password for ') + escapeHtml(outletLabel(selected)) + '.</div>';
+      pwEl.value = '';
+      pwEl.focus();
+      return;
+    }
+    statusEl.innerHTML = '';
+
     if(gdCart.length){
       statusEl.innerHTML = '<div class="status err">Goods New Entry still has ' + gdCart.length + ' unsent item(s) for ' + escapeHtml(outletLabel(currentOutletPlant)) +
         '. Submit or clear that list first, otherwise it would be sent to the wrong outlet.</div>';
@@ -3614,7 +3626,7 @@
         '<div class="pending-meta">This device will show and save data for the new outlet in New Entry, IT Entry, Completed and Problem PLUs. ' +
         'Anything submitted afterwards is recorded under <b>' + escapeHtml(outletLabel(selected)) + '</b>. The Masterlist stays shared.</div>',
       confirmLabel: 'Yes, switch outlet',
-      onConfirm: function(){ applyOutletChange(selected); },
+      onConfirm: function(){ document.getElementById('outletPasswordInput').value = ''; applyOutletChange(selected); },
       onCancel: function(){ document.getElementById('adminOutletSelect').value = currentOutletPlant; }
     });
   }
