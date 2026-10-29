@@ -516,7 +516,7 @@
         <h2><span class="step-badge">2</span> Scan &amp; Add Item</h2>
         <label>Scan / Enter Barcode or Material</label>
         <div class="btn-row" style="flex-wrap:nowrap;">
-          <input type="text" id="gdScanInput" placeholder="Scan barcode or enter Material / EAN-UPC" autocomplete="off" style="flex:1;">
+          <input type="text" id="gdScanInput" placeholder="Scan barcode or enter Material / Product Code" autocomplete="off" style="flex:1;">
           <button class="btn ghost" style="margin-top:0;" onclick="gdSearch()">Search</button>
         </div>
         <div id="gdSearchHint"></div>
@@ -532,7 +532,7 @@
             <div><span class="pl">Numerator</span><span class="pv" id="gdPrNum">-</span></div>
             <div><span class="pl">Department</span><span class="pv" id="gdPrDept">-</span></div>
             <div><span class="pl">Material</span><span class="pv" id="gdPrMat">-</span></div>
-            <div><span class="pl">EAN / UPC</span><span class="pv" id="gdPrEan">-</span></div>
+            <div><span class="pl">Product Code</span><span class="pv" id="gdPrEan">-</span></div>
           </div>
           <div class="gd-prod-form">
             <div><label>Quantity</label><input type="number" id="gdQtyInput" min="1" max="999" step="1" placeholder="Qty"></div>
@@ -735,7 +735,7 @@
         <input type="text" id="gdAdmUnit" placeholder="e.g. EA">
         <label>Numerator</label>
         <input type="number" id="gdAdmNum" placeholder="e.g. 1">
-        <label>EAN / UPC</label>
+        <label>Product Code</label>
         <input type="text" id="gdAdmEan" placeholder="Barcode (used to find an existing row)">
         <label>Department</label>
         <input type="text" id="gdAdmDept" placeholder="e.g. CONFECTIONERY">
@@ -5292,7 +5292,7 @@
       department: document.getElementById('gdAdmDept').value.trim()
     };
     if(!rec.material){ st.innerHTML = gdErrHtml('Material is required.'); return; }
-    if(!rec.ean){ st.innerHTML = gdErrHtml('EAN / UPC is required.'); return; }
+    if(!rec.ean){ st.innerHTML = gdErrHtml('Product Code is required.'); return; }
     rec.numerator = rec.numerator === '' ? null : Number(rec.numerator);
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
     // One row per barcode: update the row with this EAN if present, else insert.
