@@ -439,8 +439,11 @@
       <label>Staff Name</label>
       <input type="text" id="staffInput" placeholder="Enter staff name">
 
-      <label>Supervisor Name</label>
-      <input type="text" id="supervisorInput" placeholder="Enter supervisor name">
+      <label>Supervisor Fresh Market</label>
+      <input type="text" id="supervisorInput" placeholder="Enter supervisor fresh market name">
+
+      <label>Checked By</label>
+      <input type="text" id="checkedByInput" placeholder="Enter checked by name">
 
       <button class="btn btn-full" onclick="goToStep2()">Continue</button>
       <div id="step1Status"></div>
@@ -451,7 +454,7 @@
       <div class="summary-bar">
         <div class="info">
           <span id="summaryOutlet" class="cat-tag" style="margin-right:8px;"></span>
-          <b id="summaryStaff"></b> &middot; <span id="summarySupervisor"></span>
+          <b id="summaryStaff"></b> &middot; <span id="summarySupervisor"></span> &middot; <span id="summaryChecked"></span>
         </div>
         <div class="btn-row" style="margin-top:0;">
           <span class="edit-link" onclick="backToStep1()">Edit</span>
@@ -948,7 +951,7 @@
   // unresolved row's own entry_date instead, since a PLU might get fixed
   // days after it was originally scanned — the same-day rule always
   // applies to the ROW's day, not "today".
-  function findBatchForDay(plant, category, staff, supervisor, status, referenceDate){
+  function findBatchForDay(plant, category, staff, supervisor, checkedBy, status, referenceDate){
     var bounds = dayBoundsISO(referenceDate || new Date());
     var query = sb.from('bad_stock_fresh_market')
       .select('batch_id, plu_code, quantity, id')
@@ -959,6 +962,9 @@
       .gte('entry_date', bounds.startISO)
       .lt('entry_date', bounds.endISO);
     query = category ? query.eq('category', category) : query.is('category', null);
+    // New-format entries (with a Checked By name) only stack with the same Checked By;
+    // older rows (no Checked By) only stack with other older rows.
+    query = checkedBy ? query.eq('checked_by', checkedBy) : query.is('checked_by', null);
 
     return query.then(function(res){
       if(res.error) throw new Error(res.error.message);
@@ -967,9 +973,9 @@
     });
   }
 
-  function submitGroupToSupabase(plant, category, staff, supervisor, status, groupItems, submissionId, entryDate){
+  function submitGroupToSupabase(plant, category, staff, supervisor, checkedBy, status, groupItems, submissionId, entryDate){
     var when = entryDate ? new Date(entryDate) : new Date();
-    return findBatchForDay(plant, category, staff, supervisor, status, when)
+    return findBatchForDay(plant, category, staff, supervisor, checkedBy, status, when)
       .then(function(existing){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         var existingByPlu = {};
@@ -996,6 +1002,7 @@
               category: category,
               staff: staff,
               supervisor: supervisor,
+              checked_by: checkedBy || null,
               plu_code: item.plu,
               description: item.description,
               material: item.material,
@@ -1019,7 +1026,7 @@
       });
   }
 
-  function submitBadStockToSupabase(outlet, staff, supervisor, items, resumeSubmissionId, entryDate){
+  function submitBadStockToSupabase(outlet, staff, supervisor, checkedBy, items, resumeSubmissionId, entryDate){
     // One submissionId per New Entry submit click, shared across every
     // category batch (and the unresolved batch) that this cart's items
     // split into — this is what lets printBatch() later trace "is this
@@ -1042,7 +1049,7 @@
         var isUnresolved = key === '__UNRESOLVED__';
         var category = isUnresolved ? null : key;
         var status = isUnresolved ? 'unresolved' : 'pending';
-        return submitGroupToSupabase(outlet, category, staff, supervisor, status, groups[key], submissionId, entryDate)
+        return submitGroupToSupabase(outlet, category, staff, supervisor, checkedBy, status, groups[key], submissionId, entryDate)
           .then(function(){ doneKeys[key] = true; });
       });
     }, Promise.resolve()).then(function(){
@@ -1081,7 +1088,7 @@
         rows.forEach(function(row){
           var day = new Date(row.entry_date);
           day.setHours(0, 0, 0, 0);
-          var groupKey = row.plant + '||' + row.staff + '||' + row.supervisor + '||' + day.toISOString();
+          var groupKey = row.plant + '||' + row.staff + '||' + row.supervisor + '||' + (row.checked_by || '') + '||' + day.toISOString();
           if(!groups[groupKey]) groups[groupKey] = [];
           groups[groupKey].push(row);
         });
@@ -1092,7 +1099,7 @@
             var groupRows = groups[gKey];
             var first = groupRows[0];
 
-            return findBatchForDay(first.plant, category, first.staff, first.supervisor, 'pending', first.entry_date)
+            return findBatchForDay(first.plant, category, first.staff, first.supervisor, first.checked_by, 'pending', first.entry_date)
               .then(function(existing){
                 var ops = [];
                 var totalQty = Math.round(groupRows.reduce(function(sum, r){ return sum + r.quantity; }, 0) * 100) / 100;
@@ -1173,6 +1180,7 @@
               category: row.category,
               staff: row.staff,
               supervisor: row.supervisor,
+              checkedBy: row.checked_by || '',
               dateDisplay: formatDateDisplay(row.entry_date),
               entryDate: row.entry_date,
               items: []
@@ -1234,6 +1242,7 @@
               category: row.category,
               staff: row.staff,
               supervisor: row.supervisor,
+              checkedBy: row.checked_by || '',
               dateDisplay: formatDateDisplay(row.entry_date),
               materialDocument: row.material_document || '',
               keyInBy: row.key_in_by || '',
@@ -1310,6 +1319,7 @@
         category: batchInfo.category,
         staff: batchInfo.staff,
         supervisor: batchInfo.supervisor,
+        checked_by: batchInfo.checkedBy || null,
         plu_code: it.plu,
         description: it.description,
         material: it.material,
@@ -1364,7 +1374,7 @@
           return false;
         });
         var submissionId = existingSubmissionId || ('S' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
-        return submitGroupToSupabase(currentOutletPlant, null, batchInfo.staff, batchInfo.supervisor, 'unresolved', newUnmatchedItems, submissionId)
+        return submitGroupToSupabase(currentOutletPlant, null, batchInfo.staff, batchInfo.supervisor, batchInfo.checkedBy, 'unresolved', newUnmatchedItems, submissionId)
           .then(function(){
             // Routed away successfully — these no longer belong in this
             // batch's local item list at all.
@@ -1408,6 +1418,7 @@
             category: first.category,
             staff: first.staff,
             supervisor: first.supervisor,
+            checkedBy: first.checked_by || '',
             materialDocument: materialDocument,
             keyInBy: keyInBy,
             items: rows.map(function(r){
@@ -1579,13 +1590,22 @@
         gdInit();
 
         var draft = loadDraft();
-        if(draft && draft.staff && draft.supervisor){
+        if(draft && draft.staff && draft.supervisor && !draft.checkedBy){
+          // Draft saved before "Checked By" existed: keep the items, ask for the new name first.
+          cart = draft.cart || [];
+          document.getElementById('staffInput').value = draft.staff;
+          document.getElementById('supervisorInput').value = draft.supervisor;
+          document.getElementById('step1Status').innerHTML = '<div class="status err">You have an unsent list. Enter Checked By, then Continue to keep going.</div>';
+          renderCart();
+        } else if(draft && draft.staff && draft.supervisor){
           sessionStaff = draft.staff;
           sessionSupervisor = draft.supervisor;
+          sessionChecked = draft.checkedBy;
           cart = draft.cart || [];
 
           document.getElementById('staffInput').value = sessionStaff;
           document.getElementById('supervisorInput').value = sessionSupervisor;
+          document.getElementById('checkedByInput').value = sessionChecked;
 
           enterStep2();
           renderCart();
@@ -1775,6 +1795,7 @@
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         staff: sessionStaff,
         supervisor: sessionSupervisor,
+        checkedBy: sessionChecked,
         cart: cart,
         pluInput: pluEl ? pluEl.value : '',
         qtyInput: qtyEl ? qtyEl.value : ''
@@ -1795,19 +1816,20 @@
     try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ }
   }
 
-  var sessionStaff = '', sessionSupervisor = '';
+  var sessionStaff = '', sessionSupervisor = '', sessionChecked = '';
 
   function goToStep2(){
     var staff = document.getElementById('staffInput').value.trim();
     var supervisor = document.getElementById('supervisorInput').value.trim();
+    var checked = document.getElementById('checkedByInput').value.trim();
     var statusEl = document.getElementById('step1Status');
 
-    if(!staff || !supervisor){
-      statusEl.innerHTML = '<div class="status err">Please fill in staff and supervisor.</div>';
+    if(!staff || !supervisor || !checked){
+      statusEl.innerHTML = '<div class="status err">Please fill in staff name, supervisor fresh market and checked by.</div>';
       return;
     }
     statusEl.innerHTML = '';
-    sessionStaff = staff; sessionSupervisor = supervisor;
+    sessionStaff = staff; sessionSupervisor = supervisor; sessionChecked = checked;
     enterStep2();
     saveDraft();
   }
@@ -1816,6 +1838,7 @@
     document.getElementById('summaryOutlet').textContent = outletLabel(currentOutletPlant);
     document.getElementById('summaryStaff').textContent = sessionStaff;
     document.getElementById('summarySupervisor').textContent = sessionSupervisor;
+    document.getElementById('summaryChecked').textContent = sessionChecked;
 
     document.getElementById('step1View').style.display = 'none';
     document.getElementById('step2View').style.display = 'block';
@@ -1830,7 +1853,7 @@
     if(cart.length && !confirm('Discard this entry? Any items you\'ve added but not submitted will be lost.')) {
       return;
     }
-    sessionStaff = ''; sessionSupervisor = '';
+    sessionStaff = ''; sessionSupervisor = ''; sessionChecked = '';
     cart = [];
     currentLookup = null;
     unmatchedConfirmed = false;
@@ -1839,6 +1862,7 @@
 
     document.getElementById('staffInput').value = '';
     document.getElementById('supervisorInput').value = '';
+    document.getElementById('checkedByInput').value = '';
     document.getElementById('pluInput').value = '';
     document.getElementById('qtyInput').value = '';
     document.getElementById('lookupPreview').innerHTML = '';
@@ -2123,7 +2147,7 @@
   // ---------- New Entry: post-submit confirmation popup ----------
   // Summarises what was just submitted: items per category, and how many
   // PLUs were not in the masterlist (these go to IT Entry > Problem PLUs).
-  function buildSubmitSummary(items, staff, supervisor){
+  function buildSubmitSummary(items, staff, supervisor, checkedBy){
     var perCat = {}, order = [], unmatched = 0, total = 0;
     items.forEach(function(it){
       total++;
@@ -2132,7 +2156,7 @@
       perCat[it.category].items++;
       perCat[it.category].qty += it.qty;
     });
-    return { staff: staff, supervisor: supervisor, total: total, unmatched: unmatched, perCat: perCat, order: order };
+    return { staff: staff, supervisor: supervisor, checkedBy: checkedBy, total: total, unmatched: unmatched, perCat: perCat, order: order };
   }
 
   function showSubmitSummary(sum, onClose){
@@ -2154,7 +2178,7 @@
       '<div class="card" style="max-width:420px;width:100%;margin:0;max-height:90vh;overflow:auto;">' +
         '<h2 style="margin-top:0;">' + (sum.queued ? '&#9203; Saved on this device' : '&#10003; Submitted successfully') + '</h2>' +
         (sum.queued ? '<div class="status err" style="margin:0 0 10px;">No connection. These items are stored safely and will be sent automatically when you are back online. Do not clear your browser data.</div>' : '') +
-        '<div class="pending-meta"><b>' + escapeHtml(sum.staff) + '</b> &middot; ' + escapeHtml(sum.supervisor) + '</div>' +
+        '<div class="pending-meta"><b>' + escapeHtml(sum.staff) + '</b> &middot; ' + escapeHtml(sum.supervisor) + (sum.checkedBy ? ' &middot; ' + escapeHtml(sum.checkedBy) : '') + '</div>' +
         '<table style="margin-top:10px;"><thead><tr><th>Category</th><th style="text-align:right;">Items</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>' +
         '<div class="pending-meta" style="margin-top:10px;"><b>' + sum.total + '</b> item' + (sum.total === 1 ? '' : 's') + (sum.queued ? ' waiting to send' : ' submitted') + '</div>' +
@@ -2298,20 +2322,21 @@
     if(!cart.length) return;
 
     document.getElementById('submitBtn').disabled = true;
-    var summary = buildSubmitSummary(cart, sessionStaff, sessionSupervisor);
-    var staffNow = sessionStaff, supNow = sessionSupervisor, plantNow = currentOutletPlant;
+    var summary = buildSubmitSummary(cart, sessionStaff, sessionSupervisor, sessionChecked);
+    var staffNow = sessionStaff, supNow = sessionSupervisor, chkNow = sessionChecked, plantNow = currentOutletPlant;
 
     var finishReset = function(){
       document.getElementById('staffInput').value = '';
       document.getElementById('supervisorInput').value = '';
+      document.getElementById('checkedByInput').value = '';
       document.getElementById('submitBtn').disabled = false;
       backToStep1();
     };
 
     // Offline: store it on this device and send automatically later.
     var queueIt = function(items, submissionId){
-      outboxAdd({ plant: plantNow, staff: staffNow, supervisor: supNow, items: items, submissionId: submissionId || null, queuedAt: new Date().toISOString() });
-      var qsum = buildSubmitSummary(items, staffNow, supNow);
+      outboxAdd({ plant: plantNow, staff: staffNow, supervisor: supNow, checkedBy: chkNow, items: items, submissionId: submissionId || null, queuedAt: new Date().toISOString() });
+      var qsum = buildSubmitSummary(items, staffNow, supNow, chkNow);
       qsum.queued = true;
       statusEl.innerHTML = '';
       cart = [];
@@ -2328,7 +2353,7 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
 
-    submitBadStockToSupabase(plantNow, staffNow, supNow, cart)
+    submitBadStockToSupabase(plantNow, staffNow, supNow, chkNow, cart)
       .then(function(res){
         statusEl.innerHTML = '';
         cart = [];
@@ -2380,7 +2405,7 @@
 
     return list.reduce(function(chain, entry){
       return chain.then(function(){
-        return submitBadStockToSupabase(entry.plant, entry.staff, entry.supervisor, entry.items, entry.submissionId, entry.queuedAt)
+        return submitBadStockToSupabase(entry.plant, entry.staff, entry.supervisor, entry.checkedBy || null, entry.items, entry.submissionId, entry.queuedAt)
           .then(function(){
             sent++;
             outboxSave(outboxLoad().filter(function(e){ return e.id !== entry.id; }));
@@ -2908,6 +2933,7 @@
           category: batch.category,
           staff: batch.staff,
           supervisor: batch.supervisor,
+          checkedBy: batch.checkedBy || '',
           materialDocument: batch.materialDocument,
           keyInBy: batch.keyInBy,
           items: batch.items
@@ -2922,7 +2948,7 @@
           '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
         '</div>' +
-        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
         '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(batch.materialDocument) + '</div>' +
         '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>';
       container.appendChild(card);
@@ -2969,7 +2995,7 @@
             '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
           '</div>' +
-          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
           '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(draft.materialDocument) + '</div>' +
           '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>';
         container.appendChild(card);
@@ -2999,7 +3025,7 @@
             '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '\u25B8' : '\u25BE') + '</span></div>' +
           '</div>' +
-          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') +
             ' &middot; ' + draft.items.length + ' item' + (draft.items.length === 1 ? '' : 's') + '</div>' +
         '</div>' +
         '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
@@ -3310,7 +3336,7 @@
     if(!draft.items.length) return Promise.reject(new Error('A batch must have at least one item.'));
 
     return saveITEntryDraftToSupabase(batch.txnId, draft.items, {
-      category: batch.category, staff: batch.staff, supervisor: batch.supervisor
+      category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy
     }).then(function(){
       draft.items.forEach(function(it){ it.isNew = false; it.dirty = false; });
     });
@@ -3424,7 +3450,7 @@
         }
         statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
         return submitITEntryToSupabase(batch.txnId, draft.items, {
-          category: batch.category, staff: batch.staff, supervisor: batch.supervisor
+          category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy
         }, doc, draft.keyInBy.trim())
           .then(function(res){
             draft.submitted = res.printData;
@@ -3507,6 +3533,7 @@
           category: batch.category,
           staff: batch.staff,
           supervisor: batch.supervisor,
+          checkedBy: batch.checkedBy || '',
           materialDocument: draft.materialDocument || '',
           keyInBy: draft.keyInBy || '',
           items: draft.items
@@ -3526,6 +3553,16 @@
     // Reflects whichever outlet is currently active on this device, so a
     // report printed at 1015-SHPL correctly reads "SHPL", not "SHBN".
     var outletName = outletShortName(currentOutletPlant);
+
+    // New-format reports (entered with a Checked By name) sign as Supervisor Fresh Market /
+    // Checked By / Verified By (blank). Older records keep the Staff / Supervisor layout.
+    var newFmt = !!(p.checkedBy && String(p.checkedBy).trim());
+    var signBoxes = newFmt
+      ? '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor Fresh Market</div>' + escapeHtml(p.supervisor) + '</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Checked By</div>' + escapeHtml(p.checkedBy) + '</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Verified By</div>&nbsp;</div>'
+      : '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
+        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor</div>' + escapeHtml(p.supervisor) + '</div>';
 
     var html =
       '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Fresh Market Disposal</title><style>' +
@@ -3556,7 +3593,8 @@
               '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
               '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
               '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
-              '<div><span>Supervisor</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
+              '<div><span>' + (newFmt ? 'Supervisor Fresh Market' : 'Supervisor') + '</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
+              (newFmt ? '<div><span>Checked By</span><b>' + escapeHtml(p.checkedBy) + '</b></div>' : '') +
               '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
               '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
             '</div>' +
@@ -3565,10 +3603,7 @@
         '</thead>' +
         '<tbody>' + itemsRows + '</tbody>' +
       '</table>' +
-      '<div class="sign-grid">' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
-        '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Supervisor</div>' + escapeHtml(p.supervisor) + '</div>' +
-      '</div>' +
+      '<div class="sign-grid">' + signBoxes + '</div>' +
       '</body></html>';
 
     // Print from a hidden iframe so the browser's print dialog opens right
@@ -4250,7 +4285,7 @@
           '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
         '</div>' +
-        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
+        '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
         '<div class="pending-meta" style="margin-top:8px;">' + itemsList + '</div>' +
         '<button class="btn danger btn-full" onclick="deleteAdminPendingBatch(\'' + key + '\')">Delete Transaction</button>' +
         '<div id="adminDeleteStatus_' + safeKey + '"></div>';
@@ -4267,7 +4302,7 @@
     var confirmed = confirm(
       'Delete this pending transaction?\n\n' +
       batch.category + ' \u00b7 ' + batch.dateDisplay + '\n' +
-      batch.staff + ' / ' + batch.supervisor + '\n\n' +
+      batch.staff + ' / ' + batch.supervisor + (batch.checkedBy ? ' / ' + batch.checkedBy : '') + '\n\n' +
       'This will permanently remove it from Supabase and cannot be undone.'
     );
     if(!confirmed) return;
