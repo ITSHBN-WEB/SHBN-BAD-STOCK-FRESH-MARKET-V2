@@ -1595,6 +1595,9 @@
           cart = draft.cart || [];
           document.getElementById('staffInput').value = draft.staff;
           document.getElementById('supervisorInput').value = draft.supervisor;
+          // FIX: show Step 1 here. Previously nothing made step1View visible in
+          // this branch, so the page was blank on devices holding an old draft.
+          document.getElementById('step1View').style.display = 'block';
           document.getElementById('step1Status').innerHTML = '<div class="status err">You have an unsent list. Enter Checked By, then Continue to keep going.</div>';
           renderCart();
         } else if(draft && draft.staff && draft.supervisor){
