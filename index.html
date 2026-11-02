@@ -708,7 +708,14 @@
     </div>
 
     <div id="adminPaneMaster" style="display:none;">
-      <div class="admin-section" style="margin-top:0;">Fresh Market Disposal</div>
+      <div class="card">
+        <h2><span class="step-badge">&#8635;</span> Recent Masterlist Update Activity</h2>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Latest 10 newly added items across Fresh Market and Goods masterlists, from all outlets.</p>
+        <div id="recentMasterActivity"><div class="empty">Loading...</div></div>
+        <button class="btn ghost btn-full" onclick="loadRecentMasterActivity()">Refresh</button>
+      </div>
+
+      <div class="admin-section">Fresh Market Disposal</div>
       <div class="card">
         <h2><span class="step-badge">+</span> Add / Update Masterlist Item</h2>
         <label>PLU Code</label>
@@ -917,7 +924,7 @@
         }
 
         return sb.from('masterlist')
-          .insert([{ plu_code: plu, description: description, material: material, uom: uom, category: category }])
+          .insert([{ plu_code: plu, description: description, material: material, uom: uom, category: category, added_plant: currentOutletPlant }])
           .then(function(insRes){
             if(insRes.error) throw new Error(insRes.error.message);
             return { updated: false };
@@ -1668,6 +1675,7 @@
       loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
     if(tab === 'admin' || tab === 'master' || tab === 'store'){ adminSwitchPane(tab); populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
+    if(tab === 'master') loadRecentMasterActivity();
     if(tab === 'docs') docsLoadRecent();
     if(tab === 'home'){
       refreshHomeDashboard();
@@ -3832,6 +3840,7 @@
     addMasterlistItemToSupabase(plu, description, material, uom, category)
       .then(function(res){
         statusEl.innerHTML = '<div class="status ok">' + (res.updated ? 'Updated existing PLU in Masterlist.' : 'Added new item to Masterlist.') + '</div>';
+        loadRecentMasterActivity();
         document.getElementById('adminPlu').value = '';
         document.getElementById('adminDescription').value = '';
         document.getElementById('adminMaterial').value = '';
@@ -5337,10 +5346,11 @@
     sb.from('goods_masterlist').select('id').eq('ean', rec.ean).limit(1).then(function(res){
       if(res.error) throw new Error(res.error.message);
       if(res.data.length) return sb.from('goods_masterlist').update(rec).eq('id', res.data[0].id).then(function(r){ return { r: r, updated: true }; });
-      return sb.from('goods_masterlist').insert([rec]).then(function(r){ return { r: r, updated: false }; });
+      return sb.from('goods_masterlist').insert([Object.assign({}, rec, { added_plant: currentOutletPlant })]).then(function(r){ return { r: r, updated: false }; });
     }).then(function(o){
       if(o.r.error) throw new Error(o.r.error.message);
       st.innerHTML = gdOkHtml(o.updated ? 'Existing barcode updated.' : 'New barcode added.');
+      loadRecentMasterActivity();
       ['gdAdmMaterial', 'gdAdmDesc', 'gdAdmUnit', 'gdAdmNum', 'gdAdmEan', 'gdAdmDept'].forEach(function(id){ document.getElementById(id).value = ''; });
     }).catch(function(err){ st.innerHTML = gdErrHtml('Error: ' + err.message); });
   }
@@ -5490,6 +5500,46 @@
     });
     var h = document.getElementById('adminPageHeading');
     if(h) h.textContent = name === 'master' ? 'Masterlist Update' : (name === 'admin' ? 'Admin' : 'Store Assignment');
+  }
+
+  // ---------- Masterlist Update: recent activity (all outlets) ----------
+  // Items added before the created_at column existed have no timestamp and are not listed.
+  function loadRecentMasterActivity(){
+    var el = document.getElementById('recentMasterActivity');
+    if(!el) return;
+    var since = '2000-01-01';
+    var fm = sb.from('masterlist').select('plu_code, description, category, created_at, added_plant')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(10);
+    var gd = sb.from('goods_masterlist').select('ean, material, description, sales_unit, department, created_at, added_plant')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(10);
+    Promise.all([fm, gd]).then(function(res){
+      var err = res[0].error || res[1].error;
+      if(err) throw new Error(err.message);
+      var rows = [];
+      (res[0].data || []).forEach(function(x){
+        rows.push({ type: 'Fresh Market', code: x.plu_code, desc: x.description, sub: x.category, at: x.created_at, plant: x.added_plant });
+      });
+      (res[1].data || []).forEach(function(x){
+        rows.push({ type: 'Goods', code: x.ean || x.material, desc: x.description,
+          sub: [x.sales_unit, x.department].filter(Boolean).join(' · '), at: x.created_at, plant: x.added_plant });
+      });
+      rows.sort(function(a, b){ return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
+      rows = rows.slice(0, 10);
+      if(!rows.length){ el.innerHTML = '<div class="empty">No new items added yet.</div>'; return; }
+      el.innerHTML = rows.map(function(x){
+        return '<div style="padding:10px 0;border-top:1px solid var(--border);">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+            '<span class="cat-tag">' + escapeHtml(x.type) + '</span>' +
+            '<span class="pending-meta">' + escapeHtml(formatDateDisplay(x.at)) + '</span>' +
+          '</div>' +
+          '<div style="font-weight:700;margin-top:6px;">' + escapeHtml(x.desc || '-') + '</div>' +
+          '<div class="pending-meta" style="margin-top:2px;">' + escapeHtml(String(x.code || '-')) + (x.sub ? ' &middot; ' + escapeHtml(x.sub) : '') +
+            ' &middot; Added at ' + escapeHtml(x.plant ? outletLabel(x.plant) : '-') + '</div>' +
+        '</div>';
+      }).join('');
+    }).catch(function(err){
+      el.innerHTML = '<div class="status err">Could not load recent activity: ' + escapeHtml(err.message) + '</div>';
+    });
   }
 
   // ================= SHARED =================
