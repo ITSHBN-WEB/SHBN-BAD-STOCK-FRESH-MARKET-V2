@@ -5767,7 +5767,7 @@
     var el = document.getElementById('recentMasterActivity');
     if(!el) return;
     var since = '2000-01-01';
-    var fm = sb.from('masterlist').select('plu_code, description, category, created_at, added_plant')
+    var fm = sb.from('masterlist').select('plu_code, description, category, uom, created_at, added_plant')
       .gte('created_at', since).order('created_at', { ascending: false }).limit(10);
     var gd = sb.from('goods_masterlist').select('ean, material, description, sales_unit, department, created_at, added_plant')
       .gte('created_at', since).order('created_at', { ascending: false }).limit(10);
@@ -5776,11 +5776,11 @@
       if(err) throw new Error(err.message);
       var rows = [];
       (res[0].data || []).forEach(function(x){
-        rows.push({ type: 'Fresh Market', code: x.plu_code, desc: x.description, sub: x.category, at: x.created_at, plant: x.added_plant });
+        rows.push({ type: 'Fresh Market', code: x.plu_code, desc: x.description, sub: [x.category, x.uom ? 'UOM ' + x.uom : ''].filter(Boolean).join(' \u00B7 '), at: x.created_at, plant: x.added_plant });
       });
       (res[1].data || []).forEach(function(x){
         rows.push({ type: 'Goods', code: x.ean || x.material, desc: x.description,
-          sub: [x.sales_unit, x.department].filter(Boolean).join(' · '), at: x.created_at, plant: x.added_plant });
+          sub: [x.sales_unit ? 'UOM ' + x.sales_unit : '', x.department].filter(Boolean).join(' \u00B7 '), at: x.created_at, plant: x.added_plant });
       });
       rows.sort(function(a, b){ return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
       rows = rows.slice(0, 10);
