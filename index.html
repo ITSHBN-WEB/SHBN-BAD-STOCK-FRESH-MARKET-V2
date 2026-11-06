@@ -278,6 +278,12 @@
     .activity-tag.gd{background:var(--cube-soft);color:var(--cube)}
     .activity-empty{text-align:center;color:var(--muted);font-size:12.5px;padding:26px 0}
     .activity-empty svg{width:42px;height:42px;stroke:#b9aaa3;fill:none;stroke-width:1.5;display:block;margin:0 auto 10px}
+    .pending-meta-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+    .pending-actions{display:flex;gap:6px;flex-shrink:0;align-items:center;}
+    .mini-btn{border:1px solid var(--border);background:#fff;color:var(--text);border-radius:8px;padding:5px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;}
+    .mini-btn:hover{border-color:var(--accent);color:var(--accent);}
+    .mini-btn:disabled{opacity:.45;cursor:not-allowed;border-color:var(--border);color:var(--text);}
+    .edit-badge{background:var(--secondary-soft);color:var(--secondary);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;}
     .records-bar{display:none;gap:8px;margin:22px 0 16px;flex-wrap:wrap}
     .records-bar button{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:10px;padding:10px 16px;font:700 13px inherit;cursor:pointer}
     .records-bar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -1644,6 +1650,7 @@
   var lastRecordsType = 'it';
 
   function showTab(tab){
+    if(tab !== currentTab && editingBlocked()) return;
     currentTab = tab;
     Object.keys(TAB_VIEWS).forEach(function(k){
       var el = document.getElementById(TAB_VIEWS[k]);
@@ -2680,7 +2687,7 @@
               pendingAddDescription: '', // required description for an unmatched PLU added via "Add PLU"
               submitted: null // holds printData once submitted
             };
-          } else {
+          } else if(!editMode[key]){
             // Batch was already cached from an earlier load — refresh each
             // existing item's Description/Material/UOM from the server's
             // latest data (e.g. an admin just added a previously-missing
@@ -2746,6 +2753,7 @@
       chip.className = 'category-chip' + (selectedPendingCategory === cat ? ' active' : '');
       chip.innerHTML = escapeHtml(cat) + ' <span class="count">' + count + '</span>';
       chip.onclick = function(){
+        if(selectedPendingCategory !== cat && editingBlocked()) return;
         selectedPendingCategory = cat;
         renderCategoryPicker();
         renderPendingListFiltered();
@@ -2782,6 +2790,7 @@
   // ---------- IT Entry: Pending / Completed sub-tabs ----------
 
   function switchItSubView(view){
+    if(view !== itEntrySubView && editingBlocked()) return;
     itEntrySubView = view;
     document.getElementById('pendingSubView').style.display = view === 'pending' ? 'block' : 'none';
     document.getElementById('completedSubView').style.display = view === 'completed' ? 'block' : 'none';
@@ -2966,6 +2975,19 @@
     });
   }
 
+  // Edit / Print buttons shown in the card header (Fresh Market and Goods).
+  function editActionsHtml(type, key, editing){
+    var printFn = type === 'gd' ? 'gdPrintBatch' : 'printBatch';
+    if(editing){
+      return '<div class="pending-actions"><span class="edit-badge">Editing</span>' +
+        '<button class="mini-btn" disabled title="Save or cancel your edit first">Print</button></div>';
+    }
+    return '<div class="pending-actions">' +
+      '<button class="mini-btn" onclick="event.stopPropagation(); startEdit(\'' + type + '\', \'' + key + '\')">Edit</button>' +
+      '<button class="mini-btn" onclick="event.stopPropagation(); ' + printFn + '(\'' + key + '\')">Print</button>' +
+    '</div>';
+  }
+
   // ---------- Pending cards: expand / collapse ----------
   // With several transactions in one category the page gets very long, so
   // each pending card can fold down to its header (category, date, staff,
@@ -2999,8 +3021,10 @@
       var draft = pendingDraft[key];
       var card = document.createElement('div');
       card.className = 'card';
+      card.id = 'pcard_' + key.replace(/[^a-zA-Z0-9]/g,'_');
 
       if(draft.submitted){
+        delete editMode[key];
         card.innerHTML =
           '<div class="pending-card-header">' +
             '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
@@ -3013,6 +3037,7 @@
         return;
       }
 
+      var editing = !!editMode[key];
       var itemsHtml = draft.items.map(function(item, idx){
         var descDisplay = item.unmatched
           ? escapeHtml(item.description) + ' <span style="color:var(--danger);font-size:11px;">(Not in Masterlist)</span>'
@@ -3022,8 +3047,10 @@
           '<td>' + descDisplay + '</td>' +
           '<td>' + escapeHtml(item.plu) + '</td>' +
           '<td>' + escapeHtml(item.uom || '\u2014') + '</td>' +
-          '<td><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + item.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="pending-qty-edit"></td>' +
-          '<td><span class="remove-btn" data-key="' + key + '" data-idx="' + idx + '" onclick="removePendingItem(this)">&times;</span></td>' +
+          '<td>' + (editing
+            ? '<input type="number" min="0" max="' + MAX_QTY + '" step="0.01" value="' + item.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="pending-qty-edit">'
+            : escapeHtml(String(item.qty))) + '</td>' +
+          '<td>' + (editing ? '<span class="remove-btn" data-key="' + key + '" data-idx="' + idx + '" onclick="removePendingItem(this)">&times;</span>' : '') + '</td>' +
         '</tr>';
       }).join('');
 
@@ -3036,24 +3063,26 @@
             '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '\u25B8' : '\u25BE') + '</span></div>' +
           '</div>' +
-          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') +
-            ' &middot; ' + draft.items.length + ' item' + (draft.items.length === 1 ? '' : 's') + '</div>' +
+          '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') +
+            ' &middot; ' + draft.items.length + ' item' + (draft.items.length === 1 ? '' : 's') + '</span>' + editActionsHtml('fm', key, editing) + '</div>' +
         '</div>' +
         '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
         '<table>' +
           '<thead><tr><th>Description</th><th>PLU</th><th>UOM</th><th>Qty</th><th></th></tr></thead>' +
           '<tbody>' + itemsHtml + '</tbody>' +
         '</table>' +
-        '<div class="add-item-row">' +
-          '<div><label>Add PLU</label><input type="text" class="pending-plu-input" data-key="' + key + '" placeholder="PLU code"></div>' +
-          '<div style="flex:0 0 90px;"><label>Qty</label><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" class="pending-qty-input" data-key="' + key + '" placeholder="0"></div>' +
-          '<button class="btn ghost" style="margin-top:0;" onclick="addPendingItem(\'' + key + '\')">Add</button>' +
-        '</div>' +
-        '<div id="pendingAddPreview_' + pendingSafeKey + '"></div>' +
-        '<div id="pendingAddStatus_' + pendingSafeKey + '"></div>' +
-        '<button class="btn secondary btn-full" onclick="saveDraftChanges(\'' + key + '\')">Save Changes</button>' +
+        (editing
+          ? '<div class="add-item-row">' +
+              '<div><label>Add PLU</label><input type="text" class="pending-plu-input" data-key="' + key + '" placeholder="PLU code"></div>' +
+              '<div style="flex:0 0 90px;"><label>Qty</label><input type="number" min="0" max="' + MAX_QTY + '" step="0.01" class="pending-qty-input" data-key="' + key + '" placeholder="0"></div>' +
+              '<button class="btn ghost" style="margin-top:0;" onclick="addPendingItem(\'' + key + '\')">Add</button>' +
+            '</div>' +
+            '<div id="pendingAddPreview_' + pendingSafeKey + '"></div>' +
+            '<div id="pendingAddStatus_' + pendingSafeKey + '"></div>' +
+            '<button class="btn secondary btn-full" onclick="saveDraftChanges(\'' + key + '\')">Save Changes</button>' +
+            '<button class="btn ghost btn-full" onclick="cancelEdit(\'fm\', \'' + key + '\')">Cancel</button>'
+          : '') +
         '<div id="pendingSaveStatus_' + pendingSafeKey + '"></div>' +
-        '<button class="btn secondary btn-full" onclick="printBatch(\'' + key + '\')">Print Here</button>' +
         sapCopySectionHtml(key, draft) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
@@ -3367,6 +3396,7 @@
 
     persistPendingDraft(key)
       .then(function(){
+        delete editMode[key];
         renderPendingListFiltered(); // reflects any item routed away to Problem PLUs
         var freshStatusEl = document.getElementById('pendingSaveStatus_' + safeKey);
         if(freshStatusEl){
@@ -3420,6 +3450,7 @@
   }
 
   function submitPendingBatch(key){
+    if(editMode[key]){ alert('Finish editing first: tap Save Changes, or Cancel.'); return; }
     var draft = pendingDraft[key];
     var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; });
     var statusId = 'pendingSubmitStatus_' + key.replace(/[^a-zA-Z0-9]/g,'_');
@@ -4810,7 +4841,7 @@
             items: batch.items.map(function(it){ return Object.assign({}, it, { dirty: false }); }),
             removedIds: [], materialDocument: '', keyInBy: '', submitted: null
           };
-        } else if(!d.submitted){
+        } else if(!d.submitted && !editMode[key]){
           var freshById = {}, seen = {};
           batch.items.forEach(function(f){ freshById[f.id] = f; });
           d.items.forEach(function(it){
@@ -4850,7 +4881,7 @@
       var chip = document.createElement('div');
       chip.className = 'category-chip' + (gdSelPendingCat === cat ? ' active' : '');
       chip.innerHTML = escapeHtml(cat) + ' <span class="count">' + count + '</span>';
-      chip.onclick = function(){ gdSelPendingCat = cat; gdRenderCategoryPicker(); gdRenderPendingFiltered(); };
+      chip.onclick = function(){ if(gdSelPendingCat !== cat && editingBlocked()) return; gdSelPendingCat = cat; gdRenderCategoryPicker(); gdRenderPendingFiltered(); };
       picker.appendChild(chip);
     });
   }
@@ -4870,6 +4901,7 @@
   }
 
   function gdSwitchSubView(view){
+    if(view !== gdSubView && editingBlocked()) return;
     gdSubView = view;
     document.getElementById('gdPendingSubView').style.display = view === 'pending' ? 'block' : 'none';
     document.getElementById('gdCompletedSubView').style.display = view === 'completed' ? 'block' : 'none';
@@ -4994,8 +5026,10 @@
       var d = gdDraft[key];
       var card = document.createElement('div');
       card.className = 'card';
+      card.id = 'pcard_' + gdSafe(key);
 
       if(d.submitted){
+        delete editMode[key];
         card.innerHTML =
           '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div></div>' +
@@ -5006,14 +5040,17 @@
         return;
       }
 
+      var editing = !!editMode[key];
       var itemsHtml = d.items.map(function(it, idx){
         return '<tr>' +
           '<td>' + escapeHtml(it.description || '(no description)') +
             '<div class="sap-reason-note">Material ' + escapeHtml(it.material) + ' &middot; ' + escapeHtml(it.ean || '-') + '</div></td>' +
           '<td>' + escapeHtml(it.salesUnit || '—') + '</td>' +
-          '<td><input type="number" min="1" max="' + GD_MAX_QTY + '" step="1" value="' + it.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="gd-pending-qty"></td>' +
+          '<td>' + (editing
+            ? '<input type="number" min="1" max="' + GD_MAX_QTY + '" step="1" value="' + it.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="gd-pending-qty">'
+            : escapeHtml(String(it.qty))) + '</td>' +
           '<td>' + escapeHtml(it.reason) + '</td>' +
-          '<td><span class="remove-btn" data-key="' + key + '" data-idx="' + idx + '" onclick="gdRemovePendingItem(this)">&times;</span></td>' +
+          '<td>' + (editing ? '<span class="remove-btn" data-key="' + key + '" data-idx="' + idx + '" onclick="gdRemovePendingItem(this)">&times;</span>' : '') + '</td>' +
         '</tr>';
       }).join('');
 
@@ -5023,14 +5060,16 @@
         '<div class="pending-toggle" onclick="gdToggleCard(this, \'' + key + '\')">' +
           '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '▸' : '▾') + '</span></div></div>' +
-          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
-          ' &middot; ' + d.items.length + ' item' + (d.items.length === 1 ? '' : 's') + '</div>' +
+          '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
+          ' &middot; ' + d.items.length + ' item' + (d.items.length === 1 ? '' : 's') + '</span>' + editActionsHtml('gd', key, editing) + '</div>' +
         '</div>' +
         '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
         '<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Reason</th><th></th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
-        '<button class="btn secondary btn-full" onclick="gdSaveChanges(\'' + key + '\')">Save Changes</button>' +
+        (editing
+          ? '<button class="btn secondary btn-full" onclick="gdSaveChanges(\'' + key + '\')">Save Changes</button>' +
+            '<button class="btn ghost btn-full" onclick="cancelEdit(\'gd\', \'' + key + '\')">Cancel</button>'
+          : '') +
         '<div id="gdSaveStatus_' + safeKey + '"></div>' +
-        '<button class="btn secondary btn-full" onclick="gdPrintBatch(\'' + key + '\')">Print Here</button>' +
         gdSapSectionHtml(key, d) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
@@ -5100,7 +5139,10 @@
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Saving...</div>';
     gdPersistDraft(key).then(function(){
       gdLastPendingSig = null;
-      st.innerHTML = gdOkHtml('Changes saved.');
+      delete editMode[key];
+      gdRenderPendingFiltered();
+      var st2 = document.getElementById('gdSaveStatus_' + gdSafe(key));
+      if(st2){ st2.innerHTML = gdOkHtml('Changes saved.'); setTimeout(function(){ st2.innerHTML = ''; }, 1500); }
     }).catch(function(err){
       st.innerHTML = gdErrHtml('Error: ' + err.message);
     });
@@ -5128,6 +5170,7 @@
   }
 
   function gdSubmitBatch(key){
+    if(editMode[key]){ alert('Finish editing first: tap Save Changes, or Cancel.'); return; }
     var d = gdDraft[key];
     var batch = gdPending.find(function(b){ return b.txnId === key; });
     var st = document.getElementById('gdSubmitStatus_' + gdSafe(key));
@@ -5542,6 +5585,79 @@
       el.innerHTML = '<div class="status err">Could not load recent activity: ' + escapeHtml(err.message) + '</div>';
     });
   }
+
+  // ---------- Disposal Records: edit mode (Fresh Market + Goods) ----------
+  // A pending entry is read-only until Edit is tapped. Edit takes a snapshot so
+  // Cancel can restore it, and leaving the entry (switching category, sub-tab,
+  // Fresh Market/Goods or any page) is blocked while there are unsaved changes.
+  var editMode = {}; // txnId -> { type: 'fm' | 'gd', snapshot: { items, removedIds, sig } }
+
+  function editDraftOf(type, key){ return type === 'gd' ? gdDraft[key] : pendingDraft[key]; }
+
+  function editSig(type, d){
+    if(type === 'gd'){
+      return JSON.stringify([d.items.map(function(i){ return [i.id, i.qty]; }), (d.removedIds || []).slice().sort()]);
+    }
+    return JSON.stringify(d.items.map(function(i){ return [i.plu, i.qty, i.description, i.isNew ? 1 : 0]; }));
+  }
+
+  function editRerender(type){
+    if(type === 'gd') gdRenderPendingFiltered(); else renderPendingListFiltered();
+  }
+
+  function startEdit(type, key){
+    var d = editDraftOf(type, key);
+    if(!d || d.submitted) return;
+    editMode[key] = {
+      type: type,
+      snapshot: { items: JSON.parse(JSON.stringify(d.items)), removedIds: (d.removedIds || []).slice(), sig: editSig(type, d) }
+    };
+    if(type === 'gd') gdCollapsed[key] = false; else pendingCollapsedState[key] = false; // open the card
+    editRerender(type);
+  }
+
+  function cancelEdit(type, key){
+    var e = editMode[key], d = editDraftOf(type, key);
+    if(e && d){
+      d.items = e.snapshot.items;
+      if(type === 'gd') d.removedIds = e.snapshot.removedIds;
+      d.pluInput = ''; d.qtyInput = ''; d.pendingAddDescription = '';
+    }
+    delete editMode[key];
+    editRerender(type);
+  }
+
+  function editIsDirty(key){
+    var e = editMode[key], d = e && editDraftOf(e.type, key);
+    return !!(d && !d.submitted && editSig(e.type, d) !== e.snapshot.sig);
+  }
+
+  // Returns true (and tells the person why) when an entry has unsaved edits.
+  // An entry opened with Edit but left unchanged just leaves edit mode quietly.
+  function editingBlocked(){
+    var blockedKey = null, cleaned = false;
+    Object.keys(editMode).forEach(function(k){
+      var e = editMode[k], d = editDraftOf(e.type, k);
+      if(!d || d.submitted){ delete editMode[k]; return; }
+      if(editIsDirty(k)){ if(!blockedKey) blockedKey = k; }
+      else { delete editMode[k]; cleaned = true; }
+    });
+    if(cleaned){ renderPendingListFiltered(); gdRenderPendingFiltered(); }
+    if(!blockedKey) return false;
+    var e = editMode[blockedKey];
+    var batch = e.type === 'gd'
+      ? gdPending.find(function(b){ return b.txnId === blockedKey; })
+      : pendingEntries.find(function(b){ return pendingKey(b) === blockedKey; });
+    alert('You have not saved the edited entry yet' + (batch ? ' (' + batch.category + ' \u00B7 ' + batch.staff + ')' : '') + '.\n\n' +
+      'Tap "Save Changes" to keep your edits, or "Cancel" to discard them, before you switch.');
+    var el = document.getElementById('pcard_' + blockedKey.replace(/[^a-zA-Z0-9]/g, '_'));
+    if(el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
+
+  window.addEventListener('beforeunload', function(ev){
+    if(Object.keys(editMode).some(editIsDirty)){ ev.preventDefault(); ev.returnValue = ''; return ''; }
+  });
 
   // ================= SHARED =================
 
