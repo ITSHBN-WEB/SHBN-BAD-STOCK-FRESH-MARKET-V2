@@ -3881,8 +3881,9 @@
     var statusEl = document.getElementById('adminSaveStatus');
     var panel = document.getElementById('adminDupPanel');
 
-    if(!plu || !description || !category){
-      statusEl.innerHTML = '<div class="status err">PLU, Description, and Category are required.</div>';
+    var missing = missingFieldNames([['PLU', plu], ['Description', description], ['Material Code', material], ['UOM', uom], ['Category', category]]);
+    if(missing.length){
+      statusEl.innerHTML = '<div class="status err">Please fill in every field. Missing: ' + missing.join(', ') + '.</div>';
       return;
     }
 
@@ -4107,12 +4108,9 @@
 
     if(btn && btn.disabled) return;
 
-    if(!newPlu){
-      statusEl.innerHTML = '<div class="status err">PLU Code is required.</div>';
-      return;
-    }
-    if(!description || !category){
-      statusEl.innerHTML = '<div class="status err">Description and Category are required.</div>';
+    var missing = missingFieldNames([['PLU Code', newPlu], ['Description', description], ['Material Code', material], ['UOM', uom], ['Category', category]]);
+    if(missing.length){
+      statusEl.innerHTML = '<div class="status err">Please fill in every field. Missing: ' + missing.join(', ') + '.</div>';
       return;
     }
 
@@ -5541,9 +5539,11 @@
       ean: document.getElementById('gdAdmEan').value.trim(),
       department: document.getElementById('gdAdmDept').value.trim()
     };
-    if(!rec.material){ st.innerHTML = gdErrHtml('Material is required.'); return; }
-    if(!rec.ean){ st.innerHTML = gdErrHtml('Product Code is required.'); return; }
-    rec.numerator = rec.numerator === '' ? null : Number(rec.numerator);
+    var gdMissing = missingFieldNames([['Material', rec.material], ['Material Description', rec.description], ['Sales Unit', rec.sales_unit],
+      ['Numerator', rec.numerator], ['Product Code', rec.ean], ['Department', rec.department]]);
+    if(gdMissing.length){ st.innerHTML = gdErrHtml('Please fill in every field. Missing: ' + gdMissing.join(', ') + '.'); return; }
+    rec.numerator = Number(rec.numerator);
+    if(!isFinite(rec.numerator) || rec.numerator <= 0){ st.innerHTML = gdErrHtml('Numerator must be a number greater than 0.'); return; }
 
     panel.innerHTML = '';
     gdDupPending = null;
@@ -5802,6 +5802,11 @@
   }
 
   // ---------- Masterlist duplicate check + save-button lock (shared) ----------
+  // Names of the fields that are still empty, e.g. [['PLU', plu], ['UOM', uom]] -> 'UOM'
+  function missingFieldNames(pairs){
+    return pairs.filter(function(p){ return !String(p[1] == null ? '' : p[1]).trim(); }).map(function(p){ return p[0]; });
+  }
+
   function dupNorm(v){ return v == null ? '' : String(v).trim(); }
 
   function dupSame(existing, incoming, keys){
