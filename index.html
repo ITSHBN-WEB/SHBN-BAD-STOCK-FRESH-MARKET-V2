@@ -3088,7 +3088,7 @@
         sapCopySectionHtml(key, draft) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
-        '<input type="text" class="pending-material-doc" data-key="' + key + '" value="' + escapeHtml(draft.materialDocument) + '" placeholder="Enter material document number">' +
+        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="pending-material-doc" data-key="' + key + '" value="' + escapeHtml(draft.materialDocument) + '" placeholder="Enter material document number (numbers only)">' +
         '<label>Key In By</label>' +
         '<input type="text" class="pending-key-in-by" data-key="' + key + '" value="' + escapeHtml(draft.keyInBy) + '" placeholder="Enter your name">' +
         '<button class="btn btn-full" onclick="submitPendingBatch(\'' + key + '\')">Submit</button>' +
@@ -3123,7 +3123,9 @@
     // wire up material document / key in by fields
     document.querySelectorAll('.pending-material-doc').forEach(function(input){
       input.addEventListener('input', function(){
-        pendingDraft[input.dataset.key].materialDocument = input.value;
+        var digits = input.value.replace(/\D/g, ''); // numbers only (also cleans pasted text)
+        if(digits !== input.value) input.value = digits;
+        pendingDraft[input.dataset.key].materialDocument = digits;
       });
     });
     document.querySelectorAll('.pending-key-in-by').forEach(function(input){
@@ -3467,8 +3469,18 @@
       focusField('pending-material-doc');
       return;
     }
+    if(!/^\d+$/.test(draft.materialDocument.trim())){
+      statusEl.innerHTML = '<div class="status err">Material Document must be numbers only.</div>';
+      focusField('pending-material-doc');
+      return;
+    }
     if(!draft.keyInBy || !draft.keyInBy.trim()){
       statusEl.innerHTML = '<div class="status err">Key In By is required.</div>';
+      focusField('pending-key-in-by');
+      return;
+    }
+    if(/^[\d\s]+$/.test(draft.keyInBy.trim())){
+      statusEl.innerHTML = '<div class="status err">Key In By should be your name, not a number. Please check you did not swap it with the Material Document.</div>';
       focusField('pending-key-in-by');
       return;
     }
@@ -5208,7 +5220,7 @@
         gdSapSectionHtml(key, d) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
-        '<input type="text" class="gd-matdoc" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number">' +
+        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="gd-matdoc" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number (numbers only)">' +
         '<label>Key In By</label>' +
         '<input type="text" class="gd-keyinby" data-key="' + key + '" value="' + escapeHtml(d.keyInBy) + '" placeholder="Enter your name">' +
         '<button class="btn btn-full" onclick="gdSubmitBatch(\'' + key + '\')">Submit</button>' +
@@ -5232,7 +5244,11 @@
       });
     });
     container.querySelectorAll('.gd-matdoc').forEach(function(input){
-      input.addEventListener('input', function(){ gdDraft[input.dataset.key].materialDocument = input.value; });
+      input.addEventListener('input', function(){
+        var digits = input.value.replace(/\D/g, ''); // numbers only (also cleans pasted text)
+        if(digits !== input.value) input.value = digits;
+        gdDraft[input.dataset.key].materialDocument = digits;
+      });
     });
     container.querySelectorAll('.gd-keyinby').forEach(function(input){
       input.addEventListener('input', function(){ gdDraft[input.dataset.key].keyInBy = input.value; });
@@ -5312,7 +5328,9 @@
     if(!d || !batch) return;
     var focus = function(cls){ var f = document.querySelector('.' + cls + '[data-key="' + key + '"]'); if(f) f.focus(); };
     if(!d.materialDocument || !d.materialDocument.trim()){ st.innerHTML = gdErrHtml('Material Document is required.'); focus('gd-matdoc'); return; }
+    if(!/^\d+$/.test(d.materialDocument.trim())){ st.innerHTML = gdErrHtml('Material Document must be numbers only.'); focus('gd-matdoc'); return; }
     if(!d.keyInBy || !d.keyInBy.trim()){ st.innerHTML = gdErrHtml('Key In By is required.'); focus('gd-keyinby'); return; }
+    if(/^[\d\s]+$/.test(d.keyInBy.trim())){ st.innerHTML = gdErrHtml('Key In By should be your name, not a number. Please check you did not swap it with the Material Document.'); focus('gd-keyinby'); return; }
     var doc = d.materialDocument.trim(), by = d.keyInBy.trim();
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
     showBusy('Submitting transaction...');
