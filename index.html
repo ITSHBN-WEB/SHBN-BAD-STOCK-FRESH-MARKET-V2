@@ -304,6 +304,87 @@
     @media(max-width:1000px){.dashboard-stats,.dashboard-grid{grid-template-columns:1fr}.topbar h1{font-size:17px}.topbar p{display:none}}
     @media(max-width:700px){.outlet-pill{padding:5px 9px;font-size:9.5px;letter-spacing:.4px}.top-right{gap:7px}.user-avatar{width:26px;height:26px}.gd-prod-form{grid-template-columns:1fr}.gd-prod-form .btn{width:100%}.topbar h1{font-size:14px}}
     @media(max-width:560px){.top-right .sync-box{display:none}.topbar .brand{flex:1 1 auto}}
+  
+    /* ===== Animated 3D DRS sidebar cube ===== */
+    .sidebar-logo{
+      position:relative;width:42px;height:42px;min-width:42px;
+      display:flex;align-items:center;justify-content:center;overflow:visible;
+      perspective:180px;isolation:isolate;background:transparent !important;
+      border:0 !important;border-radius:10px;color:#fff;
+    }
+    .drs-cube-stage{
+      position:relative;width:42px;height:42px;display:flex;
+      align-items:center;justify-content:center;transform-style:preserve-3d;
+    }
+    .drs-cube-stage::after{
+      content:"";position:absolute;left:9px;right:9px;bottom:2px;height:5px;
+      border-radius:50%;background:rgba(0,0,0,.48);filter:blur(3px);
+      transform:scaleX(1.15);animation:drsShadow 4s ease-in-out infinite;z-index:-1;
+    }
+    .drs-orbit{
+      position:absolute;width:39px;height:15px;border:1px solid rgba(255,178,190,.72);
+      border-radius:50%;transform:rotate(-28deg) rotateX(58deg);
+      box-shadow:0 0 5px rgba(255,112,139,.3);
+      animation:drsOrbit 8s linear infinite;pointer-events:none;
+    }
+    .drs-cube{
+      position:relative;width:27px;height:27px;transform-style:preserve-3d;
+      animation:drsCubeFloat 4s ease-in-out infinite,drsCubeRotate 14s linear infinite;
+      will-change:transform;
+    }
+    .drs-cube-face{
+      position:absolute;inset:0;width:27px;height:27px;
+      border:1px solid rgba(255,220,225,.78);border-radius:5px;
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;
+      box-shadow:inset 0 0 8px rgba(255,255,255,.12),0 1px 4px rgba(0,0,0,.2);
+    }
+    .drs-cube-front{
+      display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;
+      background:linear-gradient(145deg,#b85a68 0%,#792d3b 48%,#451622 100%);
+      transform:translateZ(13.5px);color:#fff;
+    }
+    .drs-cube-front::before{
+      content:"";position:absolute;width:8px;height:9px;top:3px;left:9px;
+      border:1px solid rgba(255,239,241,.9);border-radius:1px;
+      background:linear-gradient(135deg,rgba(255,255,255,.24),transparent);
+    }
+    .drs-cube-front::after{
+      content:"";position:absolute;width:4px;height:1px;top:6px;left:11px;
+      background:#fff0f2;box-shadow:0 3px 0 rgba(255,240,242,.9);
+    }
+    .drs-cube-front span,.drs-cube-back span{
+      position:relative;z-index:1;font:900 8px/1 "Segoe UI",system-ui,sans-serif;
+      letter-spacing:-.3px;text-shadow:0 1px 2px rgba(30,0,8,.65);
+    }
+    .drs-cube-back{
+      display:flex;align-items:center;justify-content:center;color:#fff;
+      background:linear-gradient(145deg,#8e3c4b,#4a1725);
+      transform:rotateY(180deg) translateZ(13.5px);
+    }
+    .drs-cube-right{background:linear-gradient(145deg,#a94b5c,#581c2b);transform:rotateY(90deg) translateZ(13.5px)}
+    .drs-cube-left{background:linear-gradient(145deg,#6e2939,#35111e);transform:rotateY(-90deg) translateZ(13.5px)}
+    .drs-cube-top{background:linear-gradient(135deg,#f0a0a9,#9b4352);transform:rotateX(90deg) translateZ(13.5px)}
+    .drs-cube-bottom{background:linear-gradient(135deg,#4a1724,#260d16);transform:rotateX(-90deg) translateZ(13.5px)}
+    @keyframes drsCubeRotate{
+      0%{transform:rotateX(-13deg) rotateY(0deg) rotateZ(-4deg)}
+      50%{transform:rotateX(13deg) rotateY(180deg) rotateZ(4deg)}
+      100%{transform:rotateX(-13deg) rotateY(360deg) rotateZ(-4deg)}
+    }
+    @keyframes drsCubeFloat{0%,100%{translate:0 1px}50%{translate:0 -2px}}
+    @keyframes drsOrbit{
+      from{transform:rotate(-28deg) rotateX(58deg) rotateZ(0deg);opacity:.65}
+      50%{opacity:1}
+      to{transform:rotate(-28deg) rotateX(58deg) rotateZ(360deg);opacity:.65}
+    }
+    @keyframes drsShadow{0%,100%{opacity:.55;transform:scaleX(1.05)}50%{opacity:.28;transform:scaleX(.78)}}
+    .app-sidebar:hover .drs-cube,.app-sidebar.pinned .drs-cube{
+      filter:drop-shadow(0 0 5px rgba(255,135,155,.45));
+    }
+    .sidebar-logo:hover .drs-cube{animation-duration:2.5s,7s}
+    @media(prefers-reduced-motion:reduce){
+      .drs-cube,.drs-orbit,.drs-cube-stage::after{animation:none !important}
+    }
+
   </style>
 </head>
 <body>
@@ -321,7 +402,19 @@
 </div>
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="sidebar-brand">
-    <div class="sidebar-logo">DR</div>
+    <div class="sidebar-logo" aria-label="DRS Disposal Record System" title="DRS — Disposal Record System">
+      <div class="drs-cube-stage" aria-hidden="true">
+        <div class="drs-orbit"></div>
+        <div class="drs-cube">
+          <div class="drs-cube-face drs-cube-front"><span>DRS</span></div>
+          <div class="drs-cube-face drs-cube-back"><span>DRS</span></div>
+          <div class="drs-cube-face drs-cube-right"></div>
+          <div class="drs-cube-face drs-cube-left"></div>
+          <div class="drs-cube-face drs-cube-top"></div>
+          <div class="drs-cube-face drs-cube-bottom"></div>
+        </div>
+      </div>
+    </div>
     <div class="sidebar-brand-copy"><b>DRS</b><span>DISPOSAL RECORDS</span></div>
   </div>
   <div class="sidebar-section">WORKSPACE</div>
