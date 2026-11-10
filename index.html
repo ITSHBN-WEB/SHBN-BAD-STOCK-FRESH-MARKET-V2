@@ -693,6 +693,7 @@
   <div class="records-bar" id="recordsBar">
     <button id="recBtnFm" onclick="showTab('it')">Fresh Market Disposal <span class="count" id="recCountFm">0</span></button>
     <button id="recBtnGd" onclick="showTab('git')">Goods Disposal <span class="count" id="recCountGd">0</span></button>
+    <button id="recBtnRv" onclick="showTab('rv')">Reverted Disposal <span class="count" id="recCountRv">0</span></button>
   </div>
 
   <!-- ============ IT ENTRY TAB ============ -->
@@ -799,6 +800,18 @@
   </div>
 
   <!-- ============ DOCUMENTS ============ -->
+  <div id="rvTabView" style="display:none;">
+    <div class="card">
+      <h2><span class="step-badge">&#8634;</span> Reverted Disposal</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 4px;">Records unposted by Admin, from Fresh Market and Goods. Tap Edit to change quantities or items, post again in SAP, then enter the new Material Document and Submit.</p>
+      <button class="btn ghost btn-full" onclick="revLoad()">Refresh</button>
+    </div>
+    <div id="rvLoading"></div>
+    <div id="rvEmpty" class="empty" style="display:none;">No reverted records.</div>
+    <div id="rvFmSection" style="display:none;"><div class="admin-section">Fresh Market Disposal</div><div id="rvFmList"></div></div>
+    <div id="rvGdSection" style="display:none;"><div class="admin-section">Goods Disposal</div><div id="rvGdList"></div></div>
+  </div>
+
   <div id="docsTabView" style="display:none;">
     <h2 class="page-heading">Documents</h2>
     <div class="card">
@@ -893,7 +906,17 @@
     </div>
 
       <div id="adminUnlockedView" style="display:none;">
-        <div class="admin-section" style="margin-top:0;">Fresh Market Disposal</div>
+        <div class="admin-section" style="margin-top:0;">Disposal Records</div>
+      <div class="card">
+        <h2><span class="step-badge">&#8634;</span> Unpost Material Document</h2>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Send a completed record back for correction. It moves to Reverted Disposal, where it can be edited and submitted again with a new Material Document. This only changes this app, not SAP.</p>
+        <label>Material Document</label>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" id="unpostDocInput" placeholder="Enter material document number" oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter') unpostSearch();">
+        <button class="btn btn-full" id="unpostSearchBtn" onclick="unpostSearch()">Search</button>
+        <div id="unpostStatus"></div>
+        <div id="unpostResult"></div>
+      </div>
+        <div class="admin-section">Fresh Market Disposal</div>
       <div class="card">
         <h2><span class="step-badge">+</span> Add New Category</h2>
         <label>Category Name</label>
@@ -1296,10 +1319,10 @@
   // into the {txnId, category, staff, supervisor, dateDisplay, items:[...]}
   // batch shape the rest of the app (renderPendingList etc.) already
   // expects — mirrors what the old Apps Script backend used to hand back.
-  function getPendingEntriesFromSupabase(){
+  function getPendingEntriesFromSupabase(status){
     return sb.from('bad_stock_fresh_market')
       .select('*')
-      .eq('status', 'pending')
+      .eq('status', status || 'pending')
       .eq('plant', currentOutletPlant)
       .order('entry_date', { ascending: true })
       .then(function(res){
@@ -1318,6 +1341,9 @@
               checkedBy: row.checked_by || '',
               dateDisplay: formatDateDisplay(row.entry_date),
               entryDate: row.entry_date,
+              keyInBy: row.key_in_by || '',
+              revertedAt: row.reverted_at || null,
+              revertedDoc: row.reverted_doc || '',
               items: []
             };
             order.push(row.batch_id);
@@ -1450,7 +1476,7 @@
     var newRows = newMatchedItems.map(function(it){
       return {
         batch_id: txnId,
-        entry_date: new Date().toISOString(),
+        entry_date: batchInfo.entryDate || new Date().toISOString(),
         category: batchInfo.category,
         staff: batchInfo.staff,
         supervisor: batchInfo.supervisor,
@@ -1463,7 +1489,9 @@
         plant: currentOutletPlant,
         sloc: '1000',
         reason: '2',
-        status: 'pending'
+        status: batchInfo.status || 'pending',
+        reverted_at: batchInfo.revertedAt || null,
+        reverted_doc: batchInfo.revertedDoc || null
       };
     });
 
@@ -1577,6 +1605,9 @@
   var masterlistByPlu = {};    // fast lookup map: plu -> {description, material, uom}
   var currentLookup = null;    // currently matched PLU item awaiting quantity (New Entry)
   var cart = [];               // { plu, description, material, uom, qty }
+  var revFm = [];              // reverted Fresh Market batches (Reverted Disposal tab)
+  var revGd = [];              // reverted Goods batches
+  var revLoaded = false;
   var pendingEntries = [];     // raw data from getPendingEntries()
   var pendingDraft = {};       // keyed by txnId -> { items, materialDocument, keyInBy }
   var adminUnlocked = false;
@@ -1623,6 +1654,7 @@
   });
   function startApp(){
     refreshHomeDashboard();
+    revUpdateCount();
     getMasterlistFromSupabase()
       .then(function(list){
         masterlist = list;
@@ -1767,8 +1799,8 @@
   }
 
   // ---------- Tab switching ----------
-  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', store:'adminTabView', master:'adminTabView', admin:'adminTabView' };
-  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', store:'sideBtnStore', master:'sideBtnMaster', admin:'sideBtnAdmin' };
+  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', rv:'rvTabView', store:'adminTabView', master:'adminTabView', admin:'adminTabView' };
+  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', rv:'sideBtnIt', store:'sideBtnStore', master:'sideBtnMaster', admin:'sideBtnAdmin' };
   var lastRecordsType = 'it';
 
   function showTab(tab){
@@ -1779,10 +1811,12 @@
       if(el) el.style.display = TAB_VIEWS[k] === TAB_VIEWS[tab] ? 'block' : 'none';
     });
     var bar = document.getElementById('recordsBar');
-    if(bar) bar.style.display = (tab === 'it' || tab === 'git') ? 'flex' : 'none';
+    if(bar) bar.style.display = (tab === 'it' || tab === 'git' || tab === 'rv') ? 'flex' : 'none';
     var recFm = document.getElementById('recBtnFm'), recGd = document.getElementById('recBtnGd');
     if(recFm) recFm.classList.toggle('active', tab === 'it');
     if(recGd) recGd.classList.toggle('active', tab === 'git');
+    var recRv = document.getElementById('recBtnRv');
+    if(recRv) recRv.classList.toggle('active', tab === 'rv');
 
     ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnMaster','sideBtnStore','sideBtnAdmin'].forEach(function(id){
       var el = document.getElementById(id);
@@ -1803,6 +1837,7 @@
       gdLoadPending().then(function(){ lastSyncAt = Date.now(); nextRefreshAt = Date.now() + AUTO_REFRESH_MS; updateSyncUi(); refreshHomeDashboard(); });
       loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
+    if(tab === 'rv') revLoad();
     if(tab === 'admin' || tab === 'master' || tab === 'store'){ adminSwitchPane(tab); populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
     if(tab === 'master') loadRecentMasterActivity();
     if(tab === 'docs') docsLoadRecent();
@@ -2885,6 +2920,196 @@
   }
 
   function renderPendingListFiltered(){
+    renderPendingListFilteredBase();
+    renderRevertedList();
+  }
+
+  // =====================================================================
+  // Unpost Material Document (Admin) + Reverted Disposal tab
+  // =====================================================================
+  function fmFindBatch(key){
+    return pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+           adminPendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+           revFm.find(function(b){ return pendingKey(b) === key; });
+  }
+  function gdFindBatch(key){
+    return gdPending.find(function(b){ return b.txnId === key; }) ||
+           revGd.find(function(b){ return b.txnId === key; });
+  }
+  function fmBatchInfo(batch){
+    return {
+      category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy,
+      status: batch.reverted ? 'reverted' : 'pending',
+      entryDate: batch.entryDate, revertedAt: batch.revertedAt, revertedDoc: batch.revertedDoc
+    };
+  }
+  function revTypeTag(batch, label){
+    if(!batch.reverted) return '';
+    return '<span class="cat-tag" style="background:#fef3c7;color:#92400e;margin-right:6px;">' + escapeHtml(label) + '</span>';
+  }
+  function revNoteHtml(batch){
+    if(!batch.reverted) return '';
+    return '<div class="status ok" style="margin:0 0 10px;background:#fffbeb;color:#92400e;border-color:#fde68a;">' +
+      'Reverted' + (batch.revertedAt ? ' on ' + escapeHtml(formatDateDisplay(batch.revertedAt)) : '') +
+      (batch.revertedDoc ? ' &middot; previous Material Document ' + escapeHtml(batch.revertedDoc) : '') +
+      '. Edit if needed, post again in SAP, then enter the new Material Document and Submit.</div>';
+  }
+
+  function revSetBadge(){
+    var n = revFm.filter(function(b){ var d = pendingDraft[pendingKey(b)]; return !(d && d.submitted); }).length +
+            revGd.filter(function(b){ var d = gdDraft[b.txnId]; return !(d && d.submitted); }).length;
+    var el = document.getElementById('recCountRv');
+    if(el) el.textContent = String(n);
+  }
+
+  function revUpdateCount(){
+    if(revLoaded){ revSetBadge(); return; }
+    if(typeof sb === 'undefined' || !sb || !currentOutletPlant) return;
+    Promise.all(['bad_stock_fresh_market', 'bad_stock_goods'].map(function(t){
+      return sb.from(t).select('batch_id').eq('status', 'reverted').eq('plant', currentOutletPlant);
+    })).then(function(rs){
+      var seen = {};
+      rs.forEach(function(r, i){ if(!r.error) (r.data || []).forEach(function(x){ seen[i + ':' + x.batch_id] = 1; }); });
+      var el = document.getElementById('recCountRv');
+      if(el) el.textContent = String(Object.keys(seen).length);
+    }).catch(function(){});
+  }
+
+  function revLoad(){
+    var ld = document.getElementById('rvLoading');
+    if(ld && !revLoaded) ld.innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    return Promise.all([getPendingEntriesFromSupabase('reverted'), gdGetPendingFromSupabase('reverted')]).then(function(rs){
+      var fm = rs[0], gd = rs[1];
+      fm.forEach(function(b){ b.reverted = true; });
+      gd.forEach(function(b){ b.reverted = true; });
+      var keptFm = revFm.filter(function(b){ var d = pendingDraft[pendingKey(b)]; return d && d.submitted && !fm.some(function(e){ return e.txnId === b.txnId; }); });
+      var keptGd = revGd.filter(function(b){ var d = gdDraft[b.txnId]; return d && d.submitted && !gd.some(function(e){ return e.txnId === b.txnId; }); });
+      revFm = fm.concat(keptFm);
+      revGd = gd.concat(keptGd);
+      fm.forEach(function(batch){
+        var key = pendingKey(batch);
+        if(!pendingDraft[key]){
+          pendingDraft[key] = {
+            items: batch.items.map(function(it){ return Object.assign({}, it, {isNew:false, dirty:false}); }),
+            materialDocument: '', keyInBy: batch.keyInBy || '', pluInput: '', qtyInput: '',
+            pendingAddDescription: '', submitted: null
+          };
+        }
+      });
+      gd.forEach(function(batch){
+        var key = batch.txnId;
+        if(!gdDraft[key]){
+          gdDraft[key] = {
+            items: batch.items.map(function(it){ return Object.assign({}, it, { dirty: false }); }),
+            removedIds: [], materialDocument: '', keyInBy: batch.keyInBy || '', submitted: null
+          };
+        }
+      });
+      revLoaded = true;
+      if(ld) ld.innerHTML = '';
+      renderRevertedList();
+    }).catch(function(err){
+      if(ld) ld.innerHTML = '<div class="status err">Failed to load reverted records: ' + escapeHtml(err.message) + '</div>';
+    });
+  }
+
+  function renderRevertedList(){
+    revSetBadge();
+    var view = document.getElementById('rvTabView');
+    if(!view || view.style.display === 'none') return;
+    var fmSec = document.getElementById('rvFmSection'), gdSec = document.getElementById('rvGdSection');
+    var emptyEl = document.getElementById('rvEmpty');
+    fmSec.style.display = revFm.length ? 'block' : 'none';
+    gdSec.style.display = revGd.length ? 'block' : 'none';
+    emptyEl.style.display = (revFm.length || revGd.length || !revLoaded) ? 'none' : 'block';
+    if(revFm.length) renderPendingList(revFm, 'rvFmList'); else document.getElementById('rvFmList').innerHTML = '';
+    if(revGd.length) gdRenderPendingList(revGd, 'rvGdList'); else document.getElementById('rvGdList').innerHTML = '';
+  }
+
+  // ---------- Admin: search + unpost ----------
+  var unpostFound = [];
+  function unpostSearch(){
+    var inp = document.getElementById('unpostDocInput');
+    var st = document.getElementById('unpostStatus');
+    var out = document.getElementById('unpostResult');
+    var doc = inp.value.replace(/\D/g, '');
+    inp.value = doc;
+    out.innerHTML = '';
+    if(!doc){ st.innerHTML = '<div class="status err">Enter a Material Document number (numbers only).</div>'; return; }
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    var btn = document.getElementById('unpostSearchBtn'); btn.disabled = true;
+    Promise.all(['bad_stock_fresh_market', 'bad_stock_goods'].map(function(t){
+      return sb.from(t).select('*').eq('material_document', doc).eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('id', { ascending: true });
+    })).then(function(rs){
+      rs.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+      var groups = {}, order = [];
+      [['fm', rs[0].data], ['gd', rs[1].data]].forEach(function(p){
+        (p[1] || []).forEach(function(row){
+          var k = p[0] + ':' + row.batch_id;
+          if(!groups[k]){
+            groups[k] = { type: p[0], id: row.batch_id, doc: doc, category: row.category, staff: row.staff, supervisor: row.supervisor,
+              entryDate: row.entry_date, keyInBy: row.key_in_by, keyInDate: row.key_in_date, items: [] };
+            order.push(k);
+          }
+          groups[k].items.push(p[0] === 'fm'
+            ? { name: row.description || row.plu_code, qty: row.quantity, unit: row.uom }
+            : { name: row.description || row.material, qty: row.quantity, unit: row.sales_unit });
+        });
+      });
+      unpostFound = order.map(function(k){ return groups[k]; });
+      if(!unpostFound.length){
+        st.innerHTML = '<div class="status err">No completed record found for Material Document ' + escapeHtml(doc) + ' in this outlet.</div>';
+        return;
+      }
+      st.innerHTML = '';
+      out.innerHTML = unpostFound.map(function(b, i){
+        return '<div class="card" style="margin-top:10px;">' +
+          '<div class="pending-card-header"><div><span class="cat-tag" style="background:#fef3c7;color:#92400e;margin-right:6px;">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span><span class="cat-tag">' + escapeHtml(b.category) + '</span></div>' +
+          '<div class="pending-meta">' + escapeHtml(formatDateDisplay(b.entryDate)) + '</div></div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + '</div>' +
+          '<div class="pending-meta">Material Document ' + escapeHtml(b.doc) + ' &middot; Key In By ' + escapeHtml(b.keyInBy || '-') +
+            (b.keyInDate ? ' &middot; ' + escapeHtml(formatDateDisplay(b.keyInDate)) : '') + '</div>' +
+          '<table><thead><tr><th>Item</th><th>Qty</th><th>Unit</th></tr></thead><tbody>' +
+          b.items.map(function(it){ return '<tr><td>' + escapeHtml(it.name) + '</td><td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.unit || '') + '</td></tr>'; }).join('') +
+          '</tbody></table>' +
+          '<button class="btn btn-full" style="background:#b45309;" onclick="unpostConfirm(' + i + ')">Unpost</button>' +
+          '</div>';
+      }).join('');
+    }).catch(function(err){
+      st.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>';
+    }).then(function(){ btn.disabled = false; });
+  }
+
+  function unpostConfirm(i){
+    var b = unpostFound[i];
+    if(!b) return;
+    if(!confirm('Unpost Material Document ' + b.doc + '?\n\n' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + ' - ' + b.category + ' - ' + b.staff +
+        '\n' + b.items.length + ' item' + (b.items.length === 1 ? '' : 's') +
+        '\n\nThis record will move to Reverted Disposal so it can be edited and submitted again. The material document is cleared here only; reverse it in SAP separately.')) return;
+    var tbl = b.type === 'fm' ? 'bad_stock_fresh_market' : 'bad_stock_goods';
+    var st = document.getElementById('unpostStatus');
+    showBusy('Unposting...');
+    sb.from(tbl).update({
+      status: 'reverted', reverted_at: new Date().toISOString(), reverted_doc: b.doc, material_document: null, key_in_date: null
+    }).eq('batch_id', b.id).eq('status', 'keyed_in').eq('plant', currentOutletPlant).select('id').then(function(res){
+      hideBusy();
+      if(res.error) throw new Error(res.error.message);
+      if(!res.data || !res.data.length) throw new Error('Nothing was changed. The record may already have been unposted.');
+      unpostFound.splice(i, 1);
+      document.getElementById('unpostResult').innerHTML = '';
+      document.getElementById('unpostDocInput').value = '';
+      st.innerHTML = '<div class="status ok">Unposted. The record is now in Reverted Disposal. <a href="#" onclick="showTab(\'rv\'); return false;">Open Reverted Disposal</a></div>';
+      revLoaded = false;
+      revUpdateCount();
+    }).catch(function(err){
+      hideBusy();
+      var m = err.message || '';
+      if(/reverted_at|reverted_doc|check constraint/i.test(m)) m += ' (run unpost-reverted-schema.sql in Supabase first)';
+      st.innerHTML = '<div class="status err">Error: ' + escapeHtml(m) + '</div>';
+    });
+  }
+
+  function renderPendingListFilteredBase(){
     var container = document.getElementById('pendingList');
     var emptyEl = document.getElementById('pendingEmpty');
     var categoryEmptyEl = document.getElementById('pendingCategoryEmpty');
@@ -3134,8 +3359,8 @@
     if(chev) chev.textContent = nowCollapsed ? '\u25B8' : '\u25BE';
   }
 
-  function renderPendingList(batchesToRender){
-    var container = document.getElementById('pendingList');
+  function renderPendingList(batchesToRender, containerId){
+    var container = document.getElementById(containerId || 'pendingList');
     container.innerHTML = '';
 
     batchesToRender.forEach(function(batch){
@@ -3182,13 +3407,14 @@
       card.innerHTML =
         '<div class="pending-toggle" onclick="togglePendingCard(this, \'' + key + '\')">' +
           '<div class="pending-card-header">' +
-            '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+            '<div>' + revTypeTag(batch, 'Fresh Market') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '\u25B8' : '\u25BE') + '</span></div>' +
           '</div>' +
           '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') +
             ' &middot; ' + draft.items.length + ' item' + (draft.items.length === 1 ? '' : 's') + '</span>' + editActionsHtml('fm', key, editing) + '</div>' +
         '</div>' +
         '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
+        revNoteHtml(batch) +
         '<table>' +
           '<thead><tr><th>Description</th><th>PLU</th><th>UOM</th><th>Qty</th><th></th></tr></thead>' +
           '<tbody>' + itemsHtml + '</tbody>' +
@@ -3219,7 +3445,7 @@
     });
 
     // wire up qty edits
-    document.querySelectorAll('.pending-qty-edit').forEach(function(input){
+    container.querySelectorAll('.pending-qty-edit').forEach(function(input){
       input.addEventListener('change', function(){
         var key = input.dataset.key;
         var idx = parseInt(input.dataset.idx, 10);
@@ -3241,26 +3467,26 @@
     });
 
     // wire up material document / key in by fields
-    document.querySelectorAll('.pending-material-doc').forEach(function(input){
+    container.querySelectorAll('.pending-material-doc').forEach(function(input){
       input.addEventListener('input', function(){
         var digits = input.value.replace(/\D/g, ''); // numbers only (also cleans pasted text)
         if(digits !== input.value) input.value = digits;
         pendingDraft[input.dataset.key].materialDocument = digits;
       });
     });
-    document.querySelectorAll('.pending-key-in-by').forEach(function(input){
+    container.querySelectorAll('.pending-key-in-by').forEach(function(input){
       input.addEventListener('input', function(){
         pendingDraft[input.dataset.key].keyInBy = input.value;
       });
     });
-    document.querySelectorAll('.pending-plu-input').forEach(function(input){
+    container.querySelectorAll('.pending-plu-input').forEach(function(input){
       input.addEventListener('input', function(){
         pendingDraft[input.dataset.key].pluInput = input.value;
         pendingDraft[input.dataset.key].pendingAddDescription = ''; // new PLU typed — any earlier description no longer applies
         renderPendingAddPreview(input.dataset.key);
       });
     });
-    document.querySelectorAll('.pending-qty-input').forEach(function(input){
+    container.querySelectorAll('.pending-qty-input').forEach(function(input){
       input.addEventListener('input', function(){ pendingDraft[input.dataset.key].qtyInput = input.value; });
     });
   }
@@ -3495,13 +3721,10 @@
   // needs the sheet to reflect the latest edits before queuing) can reuse it.
   function persistPendingDraft(key){
     var draft = pendingDraft[key];
-    var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
-                adminPendingEntries.find(function(b){ return pendingKey(b) === key; });
+    var batch = fmFindBatch(key);
     if(!draft.items.length) return Promise.reject(new Error('A batch must have at least one item.'));
 
-    return saveITEntryDraftToSupabase(batch.txnId, draft.items, {
-      category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy
-    }).then(function(){
+    return saveITEntryDraftToSupabase(batch.txnId, draft.items, fmBatchInfo(batch)).then(function(){
       draft.items.forEach(function(it){ it.isNew = false; it.dirty = false; });
     });
   }
@@ -3576,7 +3799,7 @@
   function submitPendingBatch(key){
     if(editMode[key]){ alert('Finish editing first: tap Save Changes, or Cancel.'); return; }
     var draft = pendingDraft[key];
-    var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; });
+    var batch = fmFindBatch(key);
     var statusId = 'pendingSubmitStatus_' + key.replace(/[^a-zA-Z0-9]/g,'_');
     var statusEl = document.getElementById(statusId);
 
@@ -3625,9 +3848,7 @@
           showBusy('Submitting batch...');
         }
         statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Submitting...</div>';
-        return submitITEntryToSupabase(batch.txnId, draft.items, {
-          category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy
-        }, doc, draft.keyInBy.trim())
+        return submitITEntryToSupabase(batch.txnId, draft.items, fmBatchInfo(batch), doc, draft.keyInBy.trim())
           .then(function(res){
             draft.submitted = res.printData;
             statusEl.innerHTML = '';
@@ -3699,7 +3920,7 @@
         // Not submitted yet — print with whatever's currently in this
         // card, leaving Material Document / Key In By blank for
         // hand-writing.
-        var batch = pendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
+        var batch = fmFindBatch(key) ||
                     adminPendingEntries.find(function(b){ return pendingKey(b) === key; }) ||
                     completedEntries.find(function(b){ return pendingKey(b) === key; });
         if(!batch) return;
@@ -5041,7 +5262,9 @@
           txnId: row.batch_id, category: row.category, staff: row.staff, supervisor: row.supervisor,
           entryDate: row.entry_date, dateDisplay: formatDateDisplay(row.entry_date),
           materialDocument: completed ? (row.material_document || '') : '',
-          keyInBy: completed ? (row.key_in_by || '') : '',
+          keyInBy: row.key_in_by || '',
+          revertedAt: row.reverted_at || null,
+          revertedDoc: row.reverted_doc || '',
           items: []
         };
         order.push(row.batch_id);
@@ -5055,8 +5278,8 @@
     return order.map(function(k){ return batches[k]; });
   }
 
-  function gdGetPendingFromSupabase(){
-    return sb.from('bad_stock_goods').select('*').eq('status', 'pending').eq('plant', currentOutletPlant)
+  function gdGetPendingFromSupabase(status){
+    return sb.from('bad_stock_goods').select('*').eq('status', status || 'pending').eq('plant', currentOutletPlant)
       .order('entry_date', { ascending: true }).order('id', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -5136,6 +5359,7 @@
     var gd = document.getElementById('recCountGd');
     if(fm) fm.textContent = String(homeFmPendingCount());
     if(gd) gd.textContent = String(gdPending.filter(function(b){ var d = gdDraft[b.txnId]; return !(d && d.submitted); }).length);
+    revUpdateCount();
   }
 
   function gdRenderCategoryPicker(){
@@ -5152,6 +5376,10 @@
   }
 
   function gdRenderPendingFiltered(){
+    gdRenderPendingFilteredBase();
+    renderRevertedList();
+  }
+  function gdRenderPendingFilteredBase(){
     var container = document.getElementById('gdPendingList');
     var emptyEl = document.getElementById('gdPendingEmpty');
     var catEmpty = document.getElementById('gdPendingCategoryEmpty');
@@ -5283,8 +5511,8 @@
     if(chev) chev.textContent = nowCollapsed ? '▸' : '▾';
   }
 
-  function gdRenderPendingList(batches){
-    var container = document.getElementById('gdPendingList');
+  function gdRenderPendingList(batches, containerId){
+    var container = document.getElementById(containerId || 'gdPendingList');
     container.innerHTML = '';
     batches.forEach(function(batch){
       var key = batch.txnId;
@@ -5323,12 +5551,13 @@
       var collapsed = gdIsCollapsed(key, batches.length);
       card.innerHTML =
         '<div class="pending-toggle" onclick="gdToggleCard(this, \'' + key + '\')">' +
-          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-card-header"><div>' + revTypeTag(batch, 'Goods') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '▸' : '▾') + '</span></div></div>' +
           '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
           ' &middot; ' + d.items.length + ' item' + (d.items.length === 1 ? '' : 's') + '</span>' + editActionsHtml('gd', key, editing) + '</div>' +
         '</div>' +
         '<div class="pending-body"' + (collapsed ? ' style="display:none;"' : '') + '>' +
+        revNoteHtml(batch) +
         '<table><thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Reason</th><th></th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
         (editing
           ? '<button class="btn secondary btn-full" onclick="gdSaveChanges(\'' + key + '\')">Save Changes</button>' +
@@ -5441,7 +5670,7 @@
   function gdSubmitBatch(key){
     if(editMode[key]){ alert('Finish editing first: tap Save Changes, or Cancel.'); return; }
     var d = gdDraft[key];
-    var batch = gdPending.find(function(b){ return b.txnId === key; });
+    var batch = gdFindBatch(key);
     var st = document.getElementById('gdSubmitStatus_' + gdSafe(key));
     if(!d || !batch) return;
     var focus = function(cls){ var f = document.querySelector('.' + cls + '[data-key="' + key + '"]'); if(f) f.focus(); };
@@ -5558,7 +5787,7 @@
     var d = gdDraft[key];
     if(!d) return;
     if(d.submitted){ gdOpenPrint(d.submitted); return; }
-    var batch = gdPending.find(function(b){ return b.txnId === key; });
+    var batch = gdFindBatch(key);
     if(!batch) return;
     gdOpenPrint(gdPrintData(batch, d.materialDocument, d.keyInBy, d.items));
   }
@@ -6014,8 +6243,8 @@
     if(!blockedKey) return false;
     var e = editMode[blockedKey];
     var batch = e.type === 'gd'
-      ? gdPending.find(function(b){ return b.txnId === blockedKey; })
-      : pendingEntries.find(function(b){ return pendingKey(b) === blockedKey; });
+      ? gdFindBatch(blockedKey)
+      : fmFindBatch(blockedKey);
     alert('You have not saved the edited entry yet' + (batch ? ' (' + batch.category + ' \u00B7 ' + batch.staff + ')' : '') + '.\n\n' +
       'Tap "Save Changes" to keep your edits, or "Cancel" to discard them, before you switch.');
     var el = document.getElementById('pcard_' + blockedKey.replace(/[^a-zA-Z0-9]/g, '_'));
