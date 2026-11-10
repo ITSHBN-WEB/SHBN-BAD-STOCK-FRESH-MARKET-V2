@@ -5563,6 +5563,7 @@
           ? '<button class="btn secondary btn-full" onclick="gdSaveChanges(\'' + key + '\')">Save Changes</button>' +
             '<button class="btn ghost btn-full" onclick="cancelEdit(\'gd\', \'' + key + '\')">Cancel</button>'
           : '') +
+        (editing ? gdAddPanelHtml(key) : '') +
         '<div id="gdSaveStatus_' + safeKey + '"></div>' +
         gdSapSectionHtml(key, d) +
         '<hr class="divider">' +
@@ -5602,6 +5603,74 @@
     });
   }
 
+
+  // ---------- Add item to an existing Goods transaction (edit mode) ----------
+  var gdAddState = {};
+  function gdAddPanelHtml(key){
+    var sk = gdSafe(key);
+    return '<div class="lookup-preview" style="display:block;margin-top:12px;">' +
+      '<label style="margin-top:0;">Add item (barcode or material)</label>' +
+      '<div class="btn-row" style="flex-wrap:nowrap;">' +
+        '<input type="text" id="gdAddCode_' + sk + '" placeholder="Scan barcode or enter Material / Product Code" autocomplete="off" style="flex:1;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();gdAddSearch(\'' + key + '\');}">' +
+        '<button class="btn ghost" style="margin-top:0;" onclick="gdAddSearch(\'' + key + '\')">Search</button>' +
+      '</div>' +
+      '<div id="gdAddRes_' + sk + '"></div></div>';
+  }
+  function gdAddSearch(key){
+    var sk = gdSafe(key), res = document.getElementById('gdAddRes_' + sk);
+    var code = document.getElementById('gdAddCode_' + sk).value.trim();
+    if(!code){ res.innerHTML = gdErrHtml('Enter or scan a product code first.'); return; }
+    res.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    gdLookup(code).then(function(rows){
+      if(!rows.length){ res.innerHTML = gdErrHtml('No product found for "' + code + '". Ask Admin to add it to the Goods masterlist.'); gdAddState[key] = null; return; }
+      gdAddState[key] = { rows: rows, sel: 0 };
+      var h = '';
+      if(rows.length > 1){
+        h += '<label>Several units found &mdash; choose one</label><select id="gdAddSel_' + sk + '" onchange="gdAddPick(\'' + key + '\', this.value)">' +
+          rows.map(function(x, i){ return '<option value="' + i + '">' + escapeHtml((x.sales_unit || '-') + ' \u00B7 numerator ' + (x.numerator == null ? '-' : x.numerator) + ' \u00B7 ' + (x.ean || '-')) + '</option>'; }).join('') + '</select>';
+      }
+      h += '<div id="gdAddInfo_' + sk + '"></div>' +
+        '<div class="gd-prod-form"><div><label>Quantity</label><input type="number" id="gdAddQty_' + sk + '" min="1" max="' + GD_MAX_QTY + '" step="1" placeholder="Qty"></div>' +
+        '<div><label>Reason</label><select id="gdAddReason_' + sk + '"><option value="">Select reason...</option><option value="Damaged">Damaged</option><option value="Expired">Expired</option><option value="Buy 1 Free 1">Buy 1 Free 1</option><option value="Others">Others</option></select></div>' +
+        '<button class="btn" onclick="gdAddInsert(\'' + key + '\')">Add</button></div>';
+      res.innerHTML = h;
+      gdAddPick(key, 0);
+    }).catch(function(err){ res.innerHTML = gdErrHtml(err.message); });
+  }
+  function gdAddPick(key, i){
+    var st = gdAddState[key]; if(!st) return;
+    st.sel = Number(i) || 0;
+    var p = st.rows[st.sel];
+    document.getElementById('gdAddInfo_' + gdSafe(key)).innerHTML =
+      '<div class="pending-meta" style="margin-top:8px;"><b>' + escapeHtml(p.description || '-') + '</b><br>Material ' + escapeHtml(p.material || '-') +
+      ' &middot; ' + escapeHtml(p.ean || '-') + ' &middot; ' + escapeHtml(p.sales_unit || '-') + '</div>';
+  }
+  function gdAddInsert(key){
+    var sk = gdSafe(key), res = document.getElementById('gdAddRes_' + sk), st = gdAddState[key], d = gdDraft[key];
+    if(!st || !d) return;
+    var p = st.rows[st.sel];
+    var qty = Number(document.getElementById('gdAddQty_' + sk).value);
+    var reason = document.getElementById('gdAddReason_' + sk).value;
+    var err = function(m){ var e = document.getElementById('gdAddMsg_' + sk); if(!e){ e = document.createElement('div'); e.id = 'gdAddMsg_' + sk; res.appendChild(e); } e.innerHTML = gdErrHtml(m); };
+    if(!qty || qty <= 0){ err('Enter a valid quantity.'); return; }
+    qty = Math.round(qty * 100) / 100;
+    if(qty > GD_MAX_QTY){ err('Quantity cannot exceed ' + GD_MAX_QTY + '.'); return; }
+    if(!reason){ err('Select a reason.'); return; }
+    var ex = d.items.find(function(it){ return it.ean === (p.ean || '') && it.material === p.material && it.reason === reason; });
+    if(ex){
+      var sum = Math.round((ex.qty + qty) * 100) / 100;
+      if(sum > GD_MAX_QTY){ err('Combined quantity for this item would exceed ' + GD_MAX_QTY + '.'); return; }
+      ex.qty = sum; ex.dirty = true;
+    } else {
+      d.items.push({
+        ean: p.ean || '', material: p.material, description: p.description || '', salesUnit: p.sales_unit || '',
+        numerator: p.numerator, department: p.department || '', qty: qty, reason: reason, dirty: false
+      });
+    }
+    gdAddState[key] = null;
+    gdRenderPendingFiltered();
+  }
+
   function gdRemovePendingItem(el){
     var d = gdDraft[el.dataset.key];
     var idx = parseInt(el.dataset.idx, 10);
@@ -5625,6 +5694,26 @@
       if(it.id && it.dirty) ops.push(sb.from('bad_stock_goods').update({ quantity: it.qty }).eq('id', it.id));
     });
     if(d.removedIds.length) ops.push(sb.from('bad_stock_goods').delete().in('id', d.removedIds));
+    var fresh = d.items.filter(function(it){ return !it.id; });
+    var batch = gdFindBatch(key);
+    if(fresh.length){
+      if(!batch) return Promise.reject(new Error('Transaction not found.'));
+      var rows = fresh.map(function(it){
+        return {
+          batch_id: key, entry_date: batch.entryDate || new Date().toISOString(), category: batch.category,
+          staff: batch.staff, supervisor: batch.supervisor, ean: it.ean, material: it.material,
+          description: it.description, sales_unit: it.salesUnit,
+          numerator: (it.numerator === '' || it.numerator == null) ? null : it.numerator,
+          department: it.department, quantity: it.qty, reason: it.reason,
+          plant: currentOutletPlant, sloc: '1000', status: batch.reverted ? 'reverted' : 'pending',
+          reverted_at: batch.revertedAt || null, reverted_doc: batch.revertedDoc || null
+        };
+      });
+      ops.push(sb.from('bad_stock_goods').insert(rows).select('id').then(function(res){
+        if(!res.error && res.data) res.data.forEach(function(row, i){ if(fresh[i]) fresh[i].id = row.id; });
+        return res;
+      }));
+    }
     return Promise.all(ops).then(function(results){
       results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
       d.items.forEach(function(it){ it.dirty = false; });
@@ -6193,7 +6282,7 @@
 
   function editSig(type, d){
     if(type === 'gd'){
-      return JSON.stringify([d.items.map(function(i){ return [i.id, i.qty]; }), (d.removedIds || []).slice().sort()]);
+      return JSON.stringify([d.items.map(function(i){ return [i.id || ('n:' + i.material + i.ean + i.reason), i.qty]; }), (d.removedIds || []).slice().sort()]);
     }
     return JSON.stringify(d.items.map(function(i){ return [i.plu, i.qty, i.description, i.isNew ? 1 : 0]; }));
   }
