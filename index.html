@@ -1330,12 +1330,20 @@
   // into the {txnId, category, staff, supervisor, dateDisplay, items:[...]}
   // batch shape the rest of the app (renderPendingList etc.) already
   // expects — mirrors what the old Apps Script backend used to hand back.
+  // Items always show in the order they were first entered (row id), so the
+  // card, the printout and a later reload all agree.
+  function sortItemsById(batch){
+    batch.items.sort(function(x, y){ return Number(x.id) - Number(y.id); });
+    return batch;
+  }
+
   function getPendingEntriesFromSupabase(status){
     return sb.from('bad_stock_fresh_market')
       .select('*')
       .eq('status', status || 'pending')
       .eq('plant', currentOutletPlant)
       .order('entry_date', { ascending: true })
+      .order('id', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
 
@@ -1376,7 +1384,7 @@
           });
         });
 
-        return order.map(function(key){ return batches[key]; });
+        return order.map(function(key){ return sortItemsById(batches[key]); });
       });
   }
 
@@ -1401,6 +1409,7 @@
       .gte('entry_date', fromBound.toISOString())
       .lte('entry_date', toBound.toISOString())
       .order('entry_date', { ascending: false })
+      .order('id', { ascending: true })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
 
@@ -1433,7 +1442,7 @@
           });
         });
 
-        return order.map(function(key){ return batches[key]; });
+        return order.map(function(key){ return sortItemsById(batches[key]); });
       });
   }
 
@@ -1579,7 +1588,7 @@
       })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
-        return sb.from('bad_stock_fresh_market').select('*').eq('batch_id', txnId);
+        return sb.from('bad_stock_fresh_market').select('*').eq('batch_id', txnId).order('id', { ascending: true });
       })
       .then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -5295,7 +5304,7 @@
         qty: Number(row.quantity), reason: row.reason
       });
     });
-    return order.map(function(k){ return batches[k]; });
+    return order.map(function(k){ return sortItemsById(batches[k]); });
   }
 
   function gdGetPendingFromSupabase(status){
