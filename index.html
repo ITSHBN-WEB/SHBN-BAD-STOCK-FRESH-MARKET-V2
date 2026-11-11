@@ -30,6 +30,13 @@
     .sync-box.warn .sync-dot{background:#c58a1b;}
     .sync-box.busy .sync-dot{background:#c58a1b;animation:pulse 1s infinite;}
     @keyframes pulse{50%{opacity:.3;}}
+    @keyframes uomBlink{50%{opacity:.2;}}
+    .uom-warn{color:#c62828;font-weight:700;animation:uomBlink 1s steps(1,end) infinite;}
+    .uom-warn-box{border:1px solid #f5b5b5;background:#fff5f5;border-radius:10px;padding:10px 12px;margin:10px 0;}
+    .uom-warn-box label{display:flex;align-items:center;gap:8px;margin:8px 0 0;text-transform:none;font-size:13px;cursor:pointer;}
+    .uom-warn-box input[type=checkbox]{width:auto;margin:0;}
+    .btn:disabled,.btn[disabled]{opacity:.45;cursor:not-allowed;}
+    input:disabled.locked-input{background:#eee;cursor:not-allowed;}
     #firstOutletOverlay{position:fixed;inset:0;z-index:9999;background:var(--bg,#f4efe9);display:none;align-items:center;justify-content:center;padding:16px;}
     #firstOutletOverlay .card{width:100%;max-width:420px;margin:0;}
     .sync-btn{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:7px;padding:4px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
@@ -662,6 +669,10 @@
             <div><span class="pl">Department</span><span class="pv" id="gdPrDept">-</span></div>
             <div><span class="pl">Material</span><span class="pv" id="gdPrMat">-</span></div>
             <div><span class="pl">Product Code</span><span class="pv" id="gdPrEan">-</span></div>
+          </div>
+          <div class="uom-warn-box" id="gdUomWarn" style="display:none;">
+            <div class="uom-warn">&#9888; UOM is <span id="gdUomWarnUnit"></span>, not EA. Check the code and UOM are correct.</div>
+            <label><input type="checkbox" id="gdUomChk"> I confirm this code and UOM are correct</label>
           </div>
           <div class="gd-prod-form">
             <div><label>Quantity</label><input type="number" id="gdQtyInput" min="1" max="999" step="1" placeholder="Qty"></div>
@@ -5083,6 +5094,12 @@
     document.getElementById('gdPrDept').textContent = r.department || '-';
     document.getElementById('gdPrMat').textContent = r.material || '-';
     document.getElementById('gdPrEan').textContent = r.ean || '-';
+    var w = document.getElementById('gdUomWarn');
+    document.getElementById('gdUomChk').checked = false;
+    if(w){
+      document.getElementById('gdUomWarnUnit').textContent = (r.sales_unit || 'blank');
+      w.style.display = gdNonEa(r.sales_unit) ? 'block' : 'none';
+    }
   }
 
   function gdInsertItem(){
@@ -5094,6 +5111,9 @@
     qty = Math.round(qty * 100) / 100;
     if(qty > GD_MAX_QTY){ hint.innerHTML = gdErrHtml('Quantity cannot exceed ' + GD_MAX_QTY + '.'); return; }
     if(!reason){ hint.innerHTML = gdErrHtml('Select a reason.'); return; }
+    if(gdNonEa(gdProduct.sales_unit) && !document.getElementById('gdUomChk').checked){
+      hint.innerHTML = gdErrHtml('UOM is not EA. Tick the box to confirm the code and UOM are correct.'); return;
+    }
 
     var p = gdProduct;
     var existing = gdCart.find(function(it){ return it.ean === (p.ean || '') && it.material === p.material && it.reason === reason; });
@@ -5538,7 +5558,7 @@
         return '<tr>' +
           '<td>' + escapeHtml(it.description || '(no description)') +
             '<div class="sap-reason-note">Material ' + escapeHtml(it.material) + ' &middot; ' + escapeHtml(it.ean || '-') + '</div></td>' +
-          '<td>' + escapeHtml(it.salesUnit || '—') + '</td>' +
+          '<td>' + (gdNonEa(it.salesUnit) ? '<span class="uom-warn">&#9888; ' + escapeHtml(it.salesUnit || 'blank') + '</span>' : escapeHtml(it.salesUnit || '—')) + '</td>' +
           '<td>' + (editing
             ? '<input type="number" min="1" max="' + GD_MAX_QTY + '" step="1" value="' + it.qty + '" data-key="' + key + '" data-idx="' + idx + '" class="gd-pending-qty">'
             : escapeHtml(String(it.qty))) + '</td>' +
@@ -5565,13 +5585,14 @@
           : '') +
         (editing ? gdAddPanelHtml(key) : '') +
         '<div id="gdSaveStatus_' + safeKey + '"></div>' +
+        gdUomWarnHtml(key, d) +
         gdSapSectionHtml(key, d) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
-        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="gd-matdoc" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number (numbers only)">' +
+        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="gd-matdoc' + (gdUomLocked(d) ? ' locked-input' : '') + '" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number (numbers only)"' + (gdUomLocked(d) ? ' disabled' : '') + '>' +
         '<label>Key In By</label>' +
-        '<input type="text" class="gd-keyinby" data-key="' + key + '" value="' + escapeHtml(d.keyInBy) + '" placeholder="Enter your name">' +
-        '<button class="btn btn-full" onclick="gdSubmitBatch(\'' + key + '\')">Submit</button>' +
+        '<input type="text" class="gd-keyinby' + (gdUomLocked(d) ? ' locked-input' : '') + '" data-key="' + key + '" value="' + escapeHtml(d.keyInBy) + '" placeholder="Enter your name"' + (gdUomLocked(d) ? ' disabled' : '') + '>' +
+        '<button class="btn btn-full"' + (gdUomLocked(d) ? ' disabled' : '') + ' onclick="gdSubmitBatch(\'' + key + '\')">Submit</button>' +
         '<div id="gdSubmitStatus_' + safeKey + '"></div>' +
         '</div>';
       container.appendChild(card);
@@ -5605,6 +5626,25 @@
 
 
   // ---------- Add item to an existing Goods transaction (edit mode) ----------
+
+  // ---------- UOM other than EA: soft warning + confirmation ----------
+  function gdNonEa(u){ return String(u == null ? '' : u).trim().toUpperCase() !== 'EA'; }
+  function gdUomLocked(d){ return !d.submitted && d.items.some(function(it){ return gdNonEa(it.salesUnit); }) && !d.uomOk; }
+  function gdUomWarnHtml(key, d){
+    var odd = d.items.filter(function(it){ return gdNonEa(it.salesUnit); });
+    if(!odd.length) return '';
+    return '<div class="uom-warn-box">' +
+      '<div class="uom-warn">&#9888; UOM other than EA: ' + odd.map(function(it){ return escapeHtml((it.description || it.material) + ' (' + (it.salesUnit || 'blank') + ')'); }).join(', ') + '</div>' +
+      '<label><input type="checkbox" ' + (d.uomOk ? 'checked ' : '') + 'onchange="gdUomConfirm(\'' + key + '\', this.checked)"> I confirm the code and UOM are correct</label>' +
+      (d.uomOk ? '' : '<div class="sap-reason-note" style="margin-top:6px;">Copy Batch, Material Document, Key In By and Submit stay locked until you tick.</div>') +
+      '</div>';
+  }
+  function gdUomConfirm(key, on){
+    var d = gdDraft[key]; if(!d) return;
+    d.uomOk = !!on;
+    gdRenderPendingFiltered();
+  }
+
   var gdAddState = {};
   function gdAddPanelHtml(key){
     var sk = gdSafe(key);
@@ -5656,6 +5696,8 @@
     qty = Math.round(qty * 100) / 100;
     if(qty > GD_MAX_QTY){ err('Quantity cannot exceed ' + GD_MAX_QTY + '.'); return; }
     if(!reason){ err('Select a reason.'); return; }
+    if(gdNonEa(p.sales_unit) && !confirm('UOM is ' + (p.sales_unit || 'blank') + ', not EA.\n\n' + (p.description || p.material) + '\n\nAre the code and UOM correct?')) return;
+    if(gdNonEa(p.sales_unit)) d.uomOk = false;
     var ex = d.items.find(function(it){ return it.ean === (p.ean || '') && it.material === p.material && it.reason === reason; });
     if(ex){
       var sum = Math.round((ex.qty + qty) * 100) / 100;
@@ -5759,6 +5801,7 @@
   function gdSubmitBatch(key){
     if(editMode[key]){ alert('Finish editing first: tap Save Changes, or Cancel.'); return; }
     var d = gdDraft[key];
+    if(d && gdUomLocked(d)){ alert('Tick the UOM confirmation first.'); return; }
     var batch = gdFindBatch(key);
     var st = document.getElementById('gdSubmitStatus_' + gdSafe(key));
     if(!d || !batch) return;
@@ -5836,7 +5879,7 @@
       '<table><thead><tr><th>Material</th><th>Qty</th><th>UOM</th><th>Plant</th><th>SLoc</th><th>Reason</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
       '<div class="btn-row">' +
         '<button class="btn ghost" ' + (d.sapChunkIndex <= 0 ? 'disabled' : '') + ' onclick="gdSapPrev(\'' + key + '\')">Prev</button>' +
-        '<button class="btn secondary" onclick="gdCopySap(\'' + key + '\')">' + (thisCopied ? 'Copy Again' : 'Copy Batch') + '</button>' +
+        '<button class="btn secondary"' + (gdUomLocked(d) ? ' disabled' : '') + ' onclick="gdCopySap(\'' + key + '\')">' + (thisCopied ? 'Copy Again' : 'Copy Batch') + '</button>' +
         '<button class="btn ghost" ' + (d.sapChunkIndex >= total - 1 ? 'disabled' : '') + ' onclick="gdSapNext(\'' + key + '\')">Next</button>' +
       '</div>' +
       '<div id="gdSapStatus_' + safeKey + '">' + (d.sapNotice ? gdOkHtml(d.sapNotice) : '') + '</div>';
@@ -5851,6 +5894,7 @@
   function gdSapNext(key){ var d = gdDraft[key]; d.sapChunkIndex = Math.min(gdSapTotalChunks(d) - 1, (d.sapChunkIndex || 0) + 1); d.sapNotice = ''; gdRenderPendingFiltered(); }
   function gdCopySap(key){
     var d = gdDraft[key];
+    if(gdUomLocked(d)) return;
     var size = d.sapChunkSize || GD_SAP_CHUNK;
     var chunk = d.items.slice((d.sapChunkIndex || 0) * size, (d.sapChunkIndex || 0) * size + size);
     var st = document.getElementById('gdSapStatus_' + gdSafe(key));
