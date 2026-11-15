@@ -148,6 +148,19 @@
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
     @keyframes spin{to{transform:rotate(360deg);}}
     .loading-screen{text-align:center;padding:60px 0;color:var(--muted);font-size:13px;}
+    #loadingView{position:fixed;inset:0;z-index:9000;margin:0;border:0;border-radius:0;box-shadow:none;display:flex;align-items:center;justify-content:center;padding:24px;
+      background:radial-gradient(circle at 50% 35%, #fbf6e9 0%, var(--bg) 70%);transition:opacity .35s ease;}
+    #loadingView.fade-out{opacity:0;pointer-events:none;}
+    .welcome-box{text-align:center;max-width:420px;width:100%;animation:welcomeIn .6s ease both;}
+    .welcome-hello{font-size:15px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+    .welcome-login{margin-top:22px;font-size:14px;color:var(--text);}
+    .welcome-outlet{display:inline-block;margin-top:8px;padding:12px 26px;border-radius:14px;background:var(--accent);color:#fff;
+      font-size:30px;font-weight:800;letter-spacing:.04em;box-shadow:0 0 0 6px var(--accent-soft),0 10px 26px rgba(122,47,34,.28);animation:welcomeGlow 2s ease-in-out infinite;}
+    .welcome-wait{margin-top:28px;color:var(--muted);font-size:14px;display:flex;align-items:center;justify-content:center;gap:10px;}
+    .welcome-wait .spinner{width:18px;height:18px;border-width:3px;}
+    @keyframes welcomeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+    @keyframes welcomeGlow{50%{box-shadow:0 0 0 12px var(--accent-soft),0 10px 30px rgba(122,47,34,.38);}}
+    @media (max-width:420px){.welcome-outlet{font-size:24px;padding:10px 18px;}}
 
     .pending-badge{
       display:inline-block;background:var(--accent-soft);color:var(--accent);
@@ -558,8 +571,13 @@
   </section>
 
   <!-- Loading state while masterlist loads -->
-  <div id="loadingView" class="card">
-    <div class="loading-screen"><span class="spinner"></span> Loading product list...</div>
+  <div id="loadingView" class="card" style="display:none;">
+    <div class="welcome-box">
+      <div class="welcome-hello">Welcome</div>
+      <div class="welcome-login">Log In as</div>
+      <div class="welcome-outlet" id="welcomeOutlet">&nbsp;</div>
+      <div class="welcome-wait"><span class="spinner"></span> Please wait&hellip;</div>
+    </div>
   </div>
 
   <!-- ============ NEW ENTRY TAB ============ -->
@@ -1672,7 +1690,27 @@
     }
     startApp();
   });
+  var splashStart = 0;
+  function showSplash(){
+    var el = document.getElementById('loadingView');
+    var o = document.getElementById('welcomeOutlet');
+    if(o) o.textContent = outletLabel(currentOutletPlant);
+    if(el){ el.classList.remove('fade-out'); el.style.display = 'flex'; }
+    splashStart = Date.now();
+  }
+  // Keeps the welcome screen up long enough to be read, then fades it out.
+  function hideSplash(){
+    var el = document.getElementById('loadingView');
+    if(!el) return;
+    var wait = Math.max(0, 1500 - (Date.now() - splashStart));
+    setTimeout(function(){
+      el.classList.add('fade-out');
+      setTimeout(function(){ el.style.display = 'none'; }, 380);
+    }, wait);
+  }
+
   function startApp(){
+    showSplash();
     refreshHomeDashboard();
     revUpdateCount();
     getMasterlistFromSupabase()
@@ -1684,7 +1722,7 @@
       })
       .catch(function(err){
         document.getElementById('loadingView').innerHTML =
-          '<div class="status err">Failed to load product list: ' + err.message + '</div>';
+          '<div class="status err" style="max-width:420px;">Failed to load product list: ' + err.message + '</div>';
       });
   }
 
@@ -1766,7 +1804,7 @@
         appCategories = categories;
         updateCategorySubtitle();
         applyOutletBranding();
-        document.getElementById('loadingView').style.display = 'none';
+        hideSplash();
         lastSyncAt = Date.now();
         nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
         showTab('home');
