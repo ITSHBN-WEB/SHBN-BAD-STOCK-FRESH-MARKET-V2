@@ -325,6 +325,25 @@
     @media(max-width:700px){.outlet-pill{padding:5px 9px;font-size:9.5px;letter-spacing:.4px}.top-right{gap:7px}.user-avatar{width:26px;height:26px}.gd-prod-form{grid-template-columns:1fr}.gd-prod-form .btn{width:100%}.topbar h1{font-size:14px}}
     @media(max-width:560px){.top-right .sync-box{display:none}.topbar .brand{flex:1 1 auto}}
   
+
+    /* ===== Mobile: sidebar collapses into a slide-out drawer (3-line menu button) ===== */
+    .nav-toggle{display:none;flex:0 0 auto;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);
+      cursor:pointer;padding:0;align-items:center;justify-content:center;flex-direction:column;gap:5px}
+    .nav-toggle span{display:block;width:20px;height:2.5px;border-radius:2px;background:#fff}
+    .sidebar-backdrop{display:none}
+    @media(max-width:700px),(hover:none) and (pointer:coarse){
+      .nav-toggle{display:flex}
+      .topbar .brand{display:flex;align-items:center;gap:12px}
+      .app-sidebar,.app-sidebar:hover,.app-sidebar.pinned{width:min(272px,82vw);padding:18px 12px;transform:translateX(-102%);transition:transform .26s ease;box-shadow:none;overflow-y:auto;overflow-x:hidden;z-index:70}
+      .app-sidebar.mobile-open,.app-sidebar.mobile-open:hover{transform:none;box-shadow:10px 0 34px rgba(0,0,0,.35)}
+      .app-main,.app-sidebar.pinned~.app-main{margin-left:0}
+      .app-sidebar .sidebar-label,.app-sidebar .sidebar-brand-copy,.app-sidebar .sidebar-section,.app-sidebar .sidebar-chev{opacity:1}
+      .app-sidebar .sidebar-link.sub{padding-left:30px}
+      .sidebar-nav .sidebar-pin{display:none !important}
+      .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .26s ease}
+      .sidebar-backdrop.show{opacity:1;pointer-events:auto}
+    }
+
     /* ===== Animated 3D DRS sidebar cube ===== */
     .sidebar-logo{
       position:relative;width:42px;height:42px;min-width:42px;
@@ -444,6 +463,7 @@
     <div id="firstOutletStatus"></div>
   </div>
 </div>
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="sidebar-brand">
     <div class="sidebar-logo" aria-label="DRS Disposal Record System" title="DRS — Disposal Record System">
@@ -486,6 +506,7 @@
 
   <header class="topbar">
     <div class="brand">
+      <button class="nav-toggle" id="navToggle" onclick="toggleMobileNav()" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
       <div class="brand-text">
         <div class="title-row">
           <h1 id="appTitle">DRS &mdash; Disposal Record System</h1>
@@ -1863,6 +1884,7 @@
 
   function showTab(tab){
     if(tab !== currentTab && editingBlocked()) return;
+    closeMobileNav();
     currentTab = tab;
     Object.keys(TAB_VIEWS).forEach(function(k){
       var el = document.getElementById(TAB_VIEWS[k]);
@@ -1908,6 +1930,22 @@
     updateSyncUi();
   }
   function openRecords(){ showTab(lastRecordsType === 'git' ? 'git' : 'it'); }
+  function toggleMobileNav(){
+    var sb2 = document.getElementById('appSidebar');
+    if(sb2.classList.contains('mobile-open')) closeMobileNav(); else openMobileNav();
+  }
+  function openMobileNav(){
+    document.getElementById('appSidebar').classList.add('mobile-open');
+    document.getElementById('sidebarBackdrop').classList.add('show');
+    var t = document.getElementById('navToggle'); if(t) t.setAttribute('aria-expanded', 'true');
+  }
+  function closeMobileNav(){
+    var a = document.getElementById('appSidebar'); if(a) a.classList.remove('mobile-open');
+    var b = document.getElementById('sidebarBackdrop'); if(b) b.classList.remove('show');
+    var t = document.getElementById('navToggle'); if(t) t.setAttribute('aria-expanded', 'false');
+  }
+  window.addEventListener('resize', function(){ if(!window.matchMedia('(max-width:700px),(hover:none) and (pointer:coarse)').matches) closeMobileNav(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeMobileNav(); });
   function toggleNewMenu(){
     var sub = document.getElementById('newSubMenu');
     var grp = document.getElementById('sideBtnNewGroup');
