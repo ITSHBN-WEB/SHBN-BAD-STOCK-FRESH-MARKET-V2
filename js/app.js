@@ -3012,8 +3012,8 @@
 
   function openPrintView(p){
     // Includes a UOM column, right of Quantity, on the printed slip.
-    var itemsRows = p.items.map(function(it){
-      return '<tr><td>' + escapeHtml(it.plu) + '</td><td>' + escapeHtml(it.description || '') + '</td><td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.uom || '') + '</td></tr>';
+    var itemsRows = p.items.map(function(it, idx){
+      return '<tr><td class="no">' + (idx + 1) + '</td><td>' + escapeHtml(it.plu) + '</td><td>' + escapeHtml(it.description || '') + '</td><td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.uom || '') + '</td></tr>';
     }).join('');
 
     // Reflects whichever outlet is currently active on this device, so a
@@ -3043,6 +3043,7 @@
       'tr{page-break-inside:avoid;}' +
       '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
       'th,td{border:1px solid #999;padding:8px 10px;text-align:left;}' +
+      'th.no,td.no{width:34px;text-align:center;padding-left:4px;padding-right:4px;}' +
       'th.col-head{background:#eee;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;}' +
       '.sign-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:50px;page-break-inside:avoid;}' +
       '.sign-box{font-size:12px;}' +
@@ -3052,7 +3053,7 @@
       '</style></head><body>' +
       '<table>' +
         '<thead>' +
-          '<tr><th colspan="4" class="doc-head-cell">' +
+          '<tr><th colspan="5" class="doc-head-cell">' +
             '<div class="title">' + escapeHtml(outletName) + ' &mdash; Fresh Market Disposal</div>' +
             '<div class="subtitle">Bad Stock Report</div>' +
             '<div class="meta">' +
@@ -3065,7 +3066,7 @@
               '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
             '</div>' +
           '</th></tr>' +
-          '<tr><th class="col-head">PLU / Product Code</th><th class="col-head">Description</th><th class="col-head">Quantity</th><th class="col-head">UOM</th></tr>' +
+          '<tr><th class="col-head no">No.</th><th class="col-head">PLU / Product Code</th><th class="col-head">Description</th><th class="col-head">Quantity</th><th class="col-head">UOM</th></tr>' +
         '</thead>' +
         '<tbody>' + itemsRows + '</tbody>' +
       '</table>' +
@@ -4984,8 +4985,8 @@
   }
 
   function gdOpenPrint(p){
-    var rows = p.items.map(function(it){
-      return '<tr><td>' + escapeHtml(it.material) + '</td><td>' + escapeHtml(it.ean) + '</td><td>' + escapeHtml(it.description) + '</td>' +
+    var rows = p.items.map(function(it, idx){
+      return '<tr><td class="no">' + (idx + 1) + '</td><td>' + escapeHtml(it.material) + '</td><td>' + escapeHtml(it.ean) + '</td><td>' + escapeHtml(it.description) + '</td>' +
         '<td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.salesUnit) + '</td><td>' + escapeHtml(it.reason) + '</td></tr>';
     }).join('');
     var outletName = outletShortName(currentOutletPlant);
@@ -5000,13 +5001,14 @@
       'thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
       '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
       'th,td{border:1px solid #999;padding:7px 8px;text-align:left;}' +
+      'th.no,td.no{width:34px;text-align:center;padding-left:4px;padding-right:4px;}' +
       'th.col-head{background:#eee;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;}' +
       '.sign-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:50px;page-break-inside:avoid;}' +
       '.sign-box{font-size:12px;}.sign-line{border-top:1px solid #333;margin-top:40px;padding-top:6px;}' +
       '.sign-label{font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:0.4px;color:#444;}' +
       '@media print{body{margin:12mm;}}' +
       '</style></head><body><table><thead>' +
-        '<tr><th colspan="6" class="doc-head-cell">' +
+        '<tr><th colspan="7" class="doc-head-cell">' +
           '<div class="title">' + escapeHtml(outletName) + ' &mdash; Goods Disposal</div>' +
           '<div class="subtitle">Bad Stock Goods Report</div>' +
           '<div class="meta">' +
@@ -5017,7 +5019,7 @@
             '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
             '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
           '</div></th></tr>' +
-        '<tr><th class="col-head">Material</th><th class="col-head">Product Code</th><th class="col-head">Description</th><th class="col-head">Qty</th><th class="col-head">Unit</th><th class="col-head">Reason</th></tr>' +
+        '<tr><th class="col-head no">No.</th><th class="col-head">Material</th><th class="col-head">Product Code</th><th class="col-head">Description</th><th class="col-head">Qty</th><th class="col-head">Unit</th><th class="col-head">Reason</th></tr>' +
       '</thead><tbody>' + rows + '</tbody></table>' +
       '<div class="sign-grid">' +
         '<div class="sign-box"><div class="sign-line"></div><div class="sign-label">Staff</div>' + escapeHtml(p.staff) + '</div>' +
