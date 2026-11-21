@@ -3718,35 +3718,44 @@
         '<div class="row"><span>Category</span><b>' + escapeHtml(r.category || '\u2014') + '</b></div>' +
         '</div>';
     } else {
-      var catOptions = appCategories.map(function(c){
-        return '<option value="' + escapeHtml(c) + '"' + (c === vals.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
-      }).join('');
-
-      html +=
-        '<label>PLU Code</label><input type="text" id="mePlu" value="' + escapeHtml(vals.plu_code) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
-        '<label>Description</label><input type="text" id="meDesc" value="' + escapeHtml(vals.description) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
-        '<label>Material Code</label><input type="text" id="meMaterial" value="' + escapeHtml(vals.material) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
-        '<label>UOM</label><input type="text" id="meUom" value="' + escapeHtml(vals.uom) + '"' + (masterlistConfirmMode ? ' readonly' : '') + '>' +
-        '<label>Category</label><select id="meCategory"' + (masterlistConfirmMode ? ' disabled' : '') + '><option value="">Select category...</option>' + catOptions + '</select>';
-
-      if(!masterlistConfirmMode){
-        html += '<button class="btn btn-full" onclick="requestMasterlistSave()">Save Changes</button>';
-      } else {
-        var pluChanged = vals.plu_code !== r.plu_code;
+      if(masterlistConfirmMode){
+        // Review step: before / after side by side, what changed, then Confirm.
+        var fields = [['PLU Code', 'plu_code'], ['Description', 'description'], ['Material Code', 'material'], ['UOM', 'uom'], ['Category', 'category']];
+        var norm = function(v){ return String(v == null ? '' : v).trim(); };
+        var changed = fields.filter(function(f){ return norm(r[f[1]]) !== norm(vals[f[1]]); });
         html +=
-          '<div class="lookup-preview notfound" style="margin-top:14px;">' +
-            (pluChanged
-              ? 'This will rename PLU ' + escapeHtml(r.plu_code) + ' to ' + escapeHtml(vals.plu_code) + ' and update its details. '
-              : 'This will overwrite the existing Masterlist entry for PLU ' + escapeHtml(r.plu_code) + '. ') +
-            'Type <b>CONFIRM</b> below to proceed.' +
-            '<input type="text" id="meConfirmInput" placeholder="Type CONFIRM" style="margin-top:10px;">' +
-            '<div class="btn-row">' +
-              '<button class="btn ghost" onclick="cancelMasterlistConfirm()">Cancel</button>' +
-              '<button class="btn danger" onclick="confirmMasterlistSave()">Confirm &amp; Save</button>' +
-            '</div>' +
+          '<div class="review-banner ' + (changed.length ? 'has-changes' : 'no-changes') + '">' +
+            (changed.length
+              ? '<b>' + changed.length + ' change' + (changed.length === 1 ? '' : 's') + ' to review:</b> ' + changed.map(function(f){ return escapeHtml(f[0]); }).join(', ') + '.'
+              : '<b>No changes made.</b> Nothing differs from the current Masterlist entry.') +
+          '</div>' +
+          '<table class="review-table"><thead><tr><th></th><th>Before</th><th>After</th></tr></thead><tbody>' +
+          fields.map(function(f){
+            var diff = norm(r[f[1]]) !== norm(vals[f[1]]);
+            return '<tr' + (diff ? ' class="changed"' : '') + '><td><b>' + escapeHtml(f[0]) + '</b></td>' +
+              '<td>' + escapeHtml(norm(r[f[1]]) || '—') + '</td>' +
+              '<td>' + (diff ? '<b>' + escapeHtml(norm(vals[f[1]]) || '—') + '</b>' : escapeHtml(norm(vals[f[1]]) || '—')) + '</td></tr>';
+          }).join('') + '</tbody></table>' +
+          (norm(r.plu_code) !== norm(vals.plu_code)
+            ? '<div class="status err" style="margin-top:8px;">The PLU code itself is changing from ' + escapeHtml(r.plu_code) + ' to ' + escapeHtml(vals.plu_code) + '. This updates how it reads everywhere in the app.</div>'
+            : '') +
+          '<div class="btn-row">' +
+            '<button class="btn ghost" onclick="cancelMasterlistConfirm()">Back to edit</button>' +
+            '<button class="btn" id="meConfirmBtn" onclick="confirmMasterlistSave()"' + (changed.length ? '' : ' disabled') + '>Confirm &amp; Save</button>' +
           '</div>';
+      } else {
+        var catOptions = appCategories.map(function(c){
+          return '<option value="' + escapeHtml(c) + '"' + (c === vals.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+        }).join('');
+        html +=
+          '<label>PLU Code</label><input type="text" id="mePlu" value="' + escapeHtml(vals.plu_code) + '">' +
+          '<label>Description</label><input type="text" id="meDesc" value="' + escapeHtml(vals.description) + '">' +
+          '<label>Material Code</label><input type="text" id="meMaterial" value="' + escapeHtml(vals.material) + '">' +
+          '<label>UOM</label><input type="text" id="meUom" value="' + escapeHtml(vals.uom) + '">' +
+          '<label>Category</label><select id="meCategory"><option value="">Select category...</option>' + catOptions + '</select>' +
+          '<button class="btn btn-full" onclick="requestMasterlistSave()">Save Changes</button>' +
+          '<button class="btn ghost btn-full" onclick="cancelMasterlistEdit()">Cancel</button>';
       }
-
       html += '<div id="masterlistEditStatus"></div>';
     }
 
@@ -3767,9 +3776,9 @@
     var material = document.getElementById('meMaterial').value.trim();
     var uom = document.getElementById('meUom').value.trim();
     var category = document.getElementById('meCategory').value;
-    if(!newPlu || !description || !category){
+    if(!newPlu || !description || !material || !uom || !category){
       document.getElementById('masterlistEditStatus').innerHTML =
-        '<div class="status err">PLU Code, Description, and Category are required.</div>';
+        '<div class="status err">PLU Code, Description, Material Code, UOM and Category are all required.</div>';
       return;
     }
     // Captured now, before switching into confirm mode, so the re-render
@@ -3779,18 +3788,21 @@
     renderMasterlistSearchResult();
   }
 
+  function cancelMasterlistEdit(){
+    masterlistEditMode = false;
+    masterlistConfirmMode = false;
+    masterlistEditValues = null;
+    renderMasterlistSearchResult();
+  }
+
   function cancelMasterlistConfirm(){
     masterlistConfirmMode = false;
     renderMasterlistSearchResult();
   }
 
   function confirmMasterlistSave(){
-    var confirmInput = document.getElementById('meConfirmInput');
-    if(confirmInput.value.trim() !== 'CONFIRM'){
-      confirmInput.style.borderColor = 'var(--danger)';
-      confirmInput.placeholder = 'Type CONFIRM exactly';
-      return;
-    }
+    var btn = document.getElementById('meConfirmBtn');
+    if(btn){ if(btn.disabled) return; btn.disabled = true; btn.textContent = 'Saving...'; }
 
     var originalPlu = masterlistSearchResult.plu_code;
     var rowId = masterlistSearchResult.id;
@@ -3839,6 +3851,8 @@
       })
       .catch(function(err){
         statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
+        var b2 = document.getElementById('meConfirmBtn');
+        if(b2){ b2.disabled = false; b2.textContent = 'Confirm & Save'; }
       });
   }
 
@@ -5294,6 +5308,27 @@
   }
 
   // ---------- Admin page tabs ----------
+  // ---------- Admin: tile menu (Unpost / Fresh Market / Goods) ----------
+  var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd'];
+  function adminOpenBox(name){
+    ADMIN_BOXES.forEach(function(n){
+      var el = document.getElementById('adminBox' + n);
+      if(el) el.style.display = (n === name) ? 'block' : 'none';
+    });
+    document.getElementById('adminMenu').style.display = 'none';
+    if(name === 'Fm') loadAdminPendingList();
+    if(name === 'Gd') gdLoadAdminPending();
+    window.scrollTo(0, 0);
+  }
+  function adminCloseBox(){
+    ADMIN_BOXES.forEach(function(n){
+      var el = document.getElementById('adminBox' + n);
+      if(el) el.style.display = 'none';
+    });
+    document.getElementById('adminMenu').style.display = 'block';
+    window.scrollTo(0, 0);
+  }
+
   function adminSwitchPane(name){
     ['Store','Master','Admin'].forEach(function(n){
       var pane = document.getElementById('adminPane' + n);
