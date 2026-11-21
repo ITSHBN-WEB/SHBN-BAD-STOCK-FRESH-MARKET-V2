@@ -5342,6 +5342,7 @@
     document.getElementById('sumTypeGd').classList.toggle('active', t === 'gd');
     document.getElementById('sumResult').innerHTML = '';
     document.getElementById('sumStatus').innerHTML = '';
+    sumLast = null; sumSetActions(false);
     sumRenderCats();
   }
 
@@ -5383,6 +5384,7 @@
     var from = document.getElementById('sumFrom').value, to = document.getElementById('sumTo').value;
     var st = document.getElementById('sumStatus'), out = document.getElementById('sumResult');
     out.innerHTML = '';
+    sumSetActions(false);
     if(!from || !to){ st.innerHTML = '<div class="status err">Choose both a From and a To date.</div>'; return; }
     if(from > to){ st.innerHTML = '<div class="status err">The From date is after the To date.</div>'; return; }
     var cats = Object.keys(sumSel);
@@ -5394,7 +5396,7 @@
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Building report...</div>';
 
     var table = type === 'fm' ? 'bad_stock_fresh_market' : 'bad_stock_goods';
-    var cols = type === 'fm' ? 'plu_code,description,uom,quantity,category,batch_id' : 'material,ean,description,sales_unit,quantity,category,batch_id';
+    var cols = type === 'fm' ? 'plu_code,material,description,uom,quantity,category,batch_id' : 'material,ean,description,sales_unit,quantity,category,batch_id';
     sumFetchAll(table, cols, fromIso, toIso, cats).then(function(rows){
       var by = {}, order = [], batches = {};
       rows.forEach(function(r){
@@ -5402,7 +5404,7 @@
         var g = by[key];
         if(!g){
           g = by[key] = type === 'fm'
-            ? { code: r.plu_code, desc: r.description, unit: r.uom, qty: 0, txns: {} }
+            ? { code: r.plu_code, mat: r.material, desc: r.description, unit: r.uom, qty: 0, txns: {} }
             : { code: r.material, code2: r.ean, desc: r.description, unit: r.sales_unit, qty: 0, txns: {} };
           order.push(key);
         }
@@ -5415,6 +5417,7 @@
       sumLast = { type: type, from: from, to: to, cats: cats, list: list, records: Object.keys(batches).length };
       st.innerHTML = '';
       sumRenderResult();
+      sumSetActions(list.length > 0);
     }).catch(function(err){
       st.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>';
     }).then(function(){ btn.disabled = false; });
@@ -5428,11 +5431,11 @@
   function sumTableHtml(r, cls){
     var gd = r.type === 'gd';
     return '<table class="' + cls + '"><thead><tr><th class="rank">No.</th>' +
-      (gd ? '<th>Material</th><th>Product Code</th>' : '<th>PLU / Product Code</th>') +
+      (gd ? '<th>Material</th><th>Product Code</th>' : '<th>Material</th><th>PLU / Product Code</th>') +
       '<th>Description</th><th>UOM</th><th class="num">Total Qty</th><th class="num">Records</th></tr></thead><tbody>' +
       r.list.map(function(g, i){
         return '<tr><td class="rank">' + (i + 1) + '</td>' +
-          (gd ? '<td>' + escapeHtml(g.code) + '</td><td>' + escapeHtml(g.code2 || '') + '</td>' : '<td>' + escapeHtml(g.code) + '</td>') +
+          (gd ? '<td>' + escapeHtml(g.code) + '</td><td>' + escapeHtml(g.code2 || '') + '</td>' : '<td>' + escapeHtml(g.mat || '') + '</td><td>' + escapeHtml(g.code) + '</td>') +
           '<td>' + escapeHtml(g.desc || '') + '</td><td>' + escapeHtml(g.unit || '') + '</td>' +
           '<td class="num">' + escapeHtml(String(g.qty)) + '</td><td class="num">' + g.n + '</td></tr>';
       }).join('') + '</tbody></table>';
@@ -5451,7 +5454,32 @@
       '<div class="sum-head"><span><b>' + escapeHtml(hd.title) + '</b></span><span>' + escapeHtml(hd.range) + '</span><span>Category: <b>' + escapeHtml(hd.cats) + '</b></span>' +
       '<span><b>' + r.list.length + '</b> item' + (r.list.length === 1 ? '' : 's') + '</span><span><b>' + r.records + '</b> completed record' + (r.records === 1 ? '' : 's') + '</span></div>' +
       '<div style="overflow-x:auto;">' + sumTableHtml(r, 'sum-table') + '</div>' +
-      '<button class="btn ghost btn-full" onclick="sumPrint()">Print</button></div>';
+      '</div>';
+  }
+  function sumSetActions(on){
+    document.getElementById('sumPrintBtn').disabled = !on;
+    document.getElementById('sumExportBtn').disabled = !on;
+  }
+
+  function sumExport(){
+    var r = sumLast; if(!r || !r.list.length) return;
+    if(typeof XLSX === 'undefined'){ alert('The Excel library has not loaded yet. Check the internet connection and try again.'); return; }
+    var hd = sumHeadLine(r), gd = r.type === 'gd';
+    var rows = [
+      [outletShortName(currentOutletPlant) + ' \u2014 ' + hd.title],
+      ['Period', hd.range], ['Category', hd.cats], ['Items', r.list.length], ['Completed records', r.records], [],
+      gd ? ['No.', 'Material', 'Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
+         : ['No.', 'Material', 'PLU / Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
+    ];
+    r.list.forEach(function(g, i){
+      rows.push(gd ? [i + 1, g.code, g.code2 || '', g.desc || '', g.unit || '', g.qty, g.n]
+                   : [i + 1, g.mat || '', g.code, g.desc || '', g.unit || '', g.qty, g.n]);
+    });
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 20 }, { wch: 38 }, { wch: 8 }, { wch: 11 }, { wch: 9 }];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+    XLSX.writeFile(wb, 'DRS-' + (gd ? 'Goods' : 'FreshMarket') + '-Summary-' + r.from + '_to_' + r.to + '.xlsx');
   }
 
   function sumPrint(){
@@ -5465,7 +5493,7 @@
       'table{width:100%;border-collapse:collapse;font-size:12.5px;}thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
       'th,td{border:1px solid #999;padding:6px 8px;text-align:left;}th{background:#eee;text-transform:uppercase;font-size:11px;}' +
       'td.num,th.num{text-align:right;}td.rank,th.rank{width:34px;text-align:center;}@media print{body{margin:12mm;}}' +
-      '</style></head><body><div class="title">' + escapeHtml(outletName) + ' &mdash; ' + escapeHtml(hd.title) + '</div><div class="subtitle">Completed records, highest quantity first</div>' +
+      '</style></head><body><div class="title">' + escapeHtml(outletName) + ' &mdash; ' + escapeHtml(hd.title) + '</div>' +
       '<div class="meta">Period: <b>' + escapeHtml(hd.range) + '</b> &nbsp;|&nbsp; Category: <b>' + escapeHtml(hd.cats) + '</b> &nbsp;|&nbsp; ' + r.list.length + ' items, ' + r.records + ' records</div>' +
       sumTableHtml(r, '') + '</body></html>';
     var old = document.getElementById('printFrame'); if(old) old.parentNode.removeChild(old);

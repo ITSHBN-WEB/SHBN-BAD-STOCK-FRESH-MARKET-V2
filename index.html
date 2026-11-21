@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DRS — Disposal Record System</title>
-  <link rel="stylesheet" href="css/styles.css?v=4">
+  <link rel="stylesheet" href="css/styles.css?v=5">
 </head>
 <body>
 <div id="firstOutletOverlay">
@@ -434,7 +434,11 @@
       </div>
       <label>Category</label>
       <div id="sumCats" class="sum-cats"></div>
-      <button class="btn btn-full" id="sumRunBtn" onclick="sumRun()">Generate Report</button>
+      <div class="sum-actions">
+        <button class="btn" id="sumRunBtn" onclick="sumRun()">Generate Report</button>
+        <button class="btn ghost" id="sumPrintBtn" onclick="sumPrint()" disabled>Print</button>
+        <button class="btn ghost" id="sumExportBtn" onclick="sumExport()" disabled>Export to Excel</button>
+      </div>
       <div id="sumStatus"></div>
     </div>
     <div id="sumResult"></div>
@@ -631,6 +635,7 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/app.js?v=4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>
