@@ -851,8 +851,8 @@
   }
 
   // ---------- Tab switching ----------
-  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', rv:'rvTabView', store:'adminTabView', master:'adminTabView', admin:'adminTabView' };
-  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', rv:'sideBtnIt', store:'sideBtnStore', master:'sideBtnMaster', admin:'sideBtnAdmin' };
+  var TAB_VIEWS = { home:'homeTabView', 'new':'newTabView', gnew:'gnewTabView', it:'itTabView', git:'gitTabView', docs:'docsTabView', rv:'rvTabView', sum:'sumTabView', store:'adminTabView', master:'adminTabView', admin:'adminTabView' };
+  var TAB_SIDE = { home:'sideBtnHome', 'new':'sideBtnNew', gnew:'sideBtnGnew', it:'sideBtnIt', git:'sideBtnIt', docs:'sideBtnDocs', rv:'sideBtnIt', sum:'sideBtnSum', store:'sideBtnStore', master:'sideBtnMaster', admin:'sideBtnAdmin' };
   var lastRecordsType = 'it';
 
   function showTab(tab){
@@ -871,7 +871,7 @@
     var recRv = document.getElementById('recBtnRv');
     if(recRv) recRv.classList.toggle('active', tab === 'rv');
 
-    ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnMaster','sideBtnStore','sideBtnAdmin'].forEach(function(id){
+    ['sideBtnHome','sideBtnNew','sideBtnGnew','sideBtnIt','sideBtnDocs','sideBtnMaster','sideBtnStore','sideBtnSum','sideBtnAdmin'].forEach(function(id){
       var el = document.getElementById(id);
       if(el) el.classList.toggle('active', TAB_SIDE[tab] === id);
     });
@@ -891,6 +891,7 @@
       loadPendingEntries({silent:true, force:true}).then(gdUpdateRecordCounts).catch(function(){});
     }
     if(tab === 'rv') revLoad();
+    if(tab === 'sum') sumInit();
     if(tab === 'admin' || tab === 'master' || tab === 'store'){ adminSwitchPane(tab); populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
     if(tab === 'master') loadRecentMasterActivity();
     if(tab === 'docs') docsLoadRecent();
@@ -5308,6 +5309,174 @@
   }
 
   // ---------- Admin page tabs ----------
+
+  // =====================================================================
+  // ======================= SUMMARY REPORT ==============================
+  // =====================================================================
+  // Completed (keyed_in) records of the current outlet, by entry date, grouped by
+  // code and ranked by total quantity, highest first.
+  var sumType = 'fm';
+  var sumSel = {};          // category -> true; empty object = All categories
+  var sumLast = null;       // last generated report (for printing)
+
+  function sumPad(n){ return (n < 10 ? '0' : '') + n; }
+  function sumIso(d){ return d.getFullYear() + '-' + sumPad(d.getMonth() + 1) + '-' + sumPad(d.getDate()); }
+  function sumShow(iso){ var p = iso.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+
+  function sumInit(){
+    var f = document.getElementById('sumFrom'), t = document.getElementById('sumTo');
+    if(!t.value){
+      var now = new Date();
+      t.value = sumIso(now);
+      f.value = sumIso(new Date(now.getFullYear(), now.getMonth(), 1));
+    }
+    sumRenderCats();
+  }
+
+  function sumCategoryList(){ return (sumType === 'gd' ? gdCategories : appCategories).slice(); }
+
+  function sumSetType(t){
+    sumType = t;
+    sumSel = {};
+    document.getElementById('sumTypeFm').classList.toggle('active', t === 'fm');
+    document.getElementById('sumTypeGd').classList.toggle('active', t === 'gd');
+    document.getElementById('sumResult').innerHTML = '';
+    document.getElementById('sumStatus').innerHTML = '';
+    sumRenderCats();
+  }
+
+  function sumRenderCats(){
+    var box = document.getElementById('sumCats');
+    var all = Object.keys(sumSel).length === 0;
+    var h = '<label class="sum-chip' + (all ? ' on' : '') + '"><input type="checkbox" ' + (all ? 'checked ' : '') + 'onchange="sumToggleAll()"> All categories</label>';
+    sumCategoryList().forEach(function(c, i){
+      var on = !!sumSel[c];
+      h += '<label class="sum-chip' + (on ? ' on' : '') + '"><input type="checkbox" data-i="' + i + '" ' + (on ? 'checked ' : '') + 'onchange="sumToggleCat(' + i + ')"> ' + escapeHtml(c) + '</label>';
+    });
+    box.innerHTML = h;
+  }
+  function sumToggleAll(){ sumSel = {}; sumRenderCats(); }
+  function sumToggleCat(i){
+    var c = sumCategoryList()[i];
+    if(sumSel[c]) delete sumSel[c]; else sumSel[c] = true;
+    sumRenderCats();   // no category ticked = back to All
+  }
+
+  // Page through results (Supabase returns at most 1000 rows per request).
+  function sumFetchAll(table, cols, fromIso, toIso, cats){
+    var PAGE = 1000, out = [];
+    function next(offset){
+      var q = sb.from(table).select(cols)
+        .eq('status', 'keyed_in').eq('plant', currentOutletPlant)
+        .gte('entry_date', fromIso).lt('entry_date', toIso);
+      if(cats.length) q = q.in('category', cats);
+      return q.order('id', { ascending: true }).range(offset, offset + PAGE - 1).then(function(res){
+        if(res.error) throw new Error(res.error.message);
+        out = out.concat(res.data || []);
+        return (res.data && res.data.length === PAGE) ? next(offset + PAGE) : out;
+      });
+    }
+    return next(0);
+  }
+
+  function sumRun(){
+    var from = document.getElementById('sumFrom').value, to = document.getElementById('sumTo').value;
+    var st = document.getElementById('sumStatus'), out = document.getElementById('sumResult');
+    out.innerHTML = '';
+    if(!from || !to){ st.innerHTML = '<div class="status err">Choose both a From and a To date.</div>'; return; }
+    if(from > to){ st.innerHTML = '<div class="status err">The From date is after the To date.</div>'; return; }
+    var cats = Object.keys(sumSel);
+    var fromIso = new Date(from + 'T00:00:00').toISOString();
+    var end = new Date(to + 'T00:00:00'); end.setDate(end.getDate() + 1);
+    var toIso = end.toISOString();
+    var type = sumType;
+    var btn = document.getElementById('sumRunBtn'); btn.disabled = true;
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Building report...</div>';
+
+    var table = type === 'fm' ? 'bad_stock_fresh_market' : 'bad_stock_goods';
+    var cols = type === 'fm' ? 'plu_code,description,uom,quantity,category,batch_id' : 'material,ean,description,sales_unit,quantity,category,batch_id';
+    sumFetchAll(table, cols, fromIso, toIso, cats).then(function(rows){
+      var by = {}, order = [], batches = {};
+      rows.forEach(function(r){
+        var key = type === 'fm' ? [r.plu_code, r.uom].join('|') : [r.material, r.ean, r.sales_unit].join('|');
+        var g = by[key];
+        if(!g){
+          g = by[key] = type === 'fm'
+            ? { code: r.plu_code, desc: r.description, unit: r.uom, qty: 0, txns: {} }
+            : { code: r.material, code2: r.ean, desc: r.description, unit: r.sales_unit, qty: 0, txns: {} };
+          order.push(key);
+        }
+        g.qty += Number(r.quantity) || 0;
+        g.txns[r.batch_id] = true;
+        batches[r.batch_id] = true;
+      });
+      var list = order.map(function(k){ var g = by[k]; g.qty = Math.round(g.qty * 100) / 100; g.n = Object.keys(g.txns).length; return g; });
+      list.sort(function(a, b){ return b.qty - a.qty || String(a.desc).localeCompare(String(b.desc)); });
+      sumLast = { type: type, from: from, to: to, cats: cats, list: list, records: Object.keys(batches).length };
+      st.innerHTML = '';
+      sumRenderResult();
+    }).catch(function(err){
+      st.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>';
+    }).then(function(){ btn.disabled = false; });
+  }
+
+  function sumHeadLine(r){
+    return { title: (r.type === 'fm' ? 'Fresh Market' : 'Goods') + ' Disposal Summary',
+      range: sumShow(r.from) + ' – ' + sumShow(r.to),
+      cats: r.cats.length ? r.cats.join(', ') : 'All categories' };
+  }
+  function sumTableHtml(r, cls){
+    var gd = r.type === 'gd';
+    return '<table class="' + cls + '"><thead><tr><th class="rank">No.</th>' +
+      (gd ? '<th>Material</th><th>Product Code</th>' : '<th>PLU / Product Code</th>') +
+      '<th>Description</th><th>UOM</th><th class="num">Total Qty</th><th class="num">Records</th></tr></thead><tbody>' +
+      r.list.map(function(g, i){
+        return '<tr><td class="rank">' + (i + 1) + '</td>' +
+          (gd ? '<td>' + escapeHtml(g.code) + '</td><td>' + escapeHtml(g.code2 || '') + '</td>' : '<td>' + escapeHtml(g.code) + '</td>') +
+          '<td>' + escapeHtml(g.desc || '') + '</td><td>' + escapeHtml(g.unit || '') + '</td>' +
+          '<td class="num">' + escapeHtml(String(g.qty)) + '</td><td class="num">' + g.n + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function sumRenderResult(){
+    var r = sumLast, out = document.getElementById('sumResult');
+    if(!r) return;
+    var hd = sumHeadLine(r);
+    if(!r.list.length){
+      out.innerHTML = '<div class="card"><div class="sum-head"><span><b>' + escapeHtml(hd.title) + '</b></span><span>' + escapeHtml(hd.range) + '</span></div>' +
+        '<div class="empty">No completed records found for this selection.</div></div>';
+      return;
+    }
+    out.innerHTML = '<div class="card">' +
+      '<div class="sum-head"><span><b>' + escapeHtml(hd.title) + '</b></span><span>' + escapeHtml(hd.range) + '</span><span>Category: <b>' + escapeHtml(hd.cats) + '</b></span>' +
+      '<span><b>' + r.list.length + '</b> item' + (r.list.length === 1 ? '' : 's') + '</span><span><b>' + r.records + '</b> completed record' + (r.records === 1 ? '' : 's') + '</span></div>' +
+      '<div style="overflow-x:auto;">' + sumTableHtml(r, 'sum-table') + '</div>' +
+      '<button class="btn ghost btn-full" onclick="sumPrint()">Print</button></div>';
+  }
+
+  function sumPrint(){
+    var r = sumLast; if(!r) return;
+    var hd = sumHeadLine(r), outletName = outletShortName(currentOutletPlant);
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' ' + escapeHtml(hd.title) + '</title><style>' +
+      'body{font-family:Georgia,"Times New Roman",serif;color:#222;margin:32px;}' +
+      '.title{text-align:center;font-size:20px;font-weight:700;margin-bottom:2px;}' +
+      '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;}' +
+      '.meta{font-size:13px;border-top:1px solid #999;border-bottom:1px solid #999;padding:8px 0;margin-bottom:14px;}' +
+      'table{width:100%;border-collapse:collapse;font-size:12.5px;}thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
+      'th,td{border:1px solid #999;padding:6px 8px;text-align:left;}th{background:#eee;text-transform:uppercase;font-size:11px;}' +
+      'td.num,th.num{text-align:right;}td.rank,th.rank{width:34px;text-align:center;}@media print{body{margin:12mm;}}' +
+      '</style></head><body><div class="title">' + escapeHtml(outletName) + ' &mdash; ' + escapeHtml(hd.title) + '</div><div class="subtitle">Completed records, highest quantity first</div>' +
+      '<div class="meta">Period: <b>' + escapeHtml(hd.range) + '</b> &nbsp;|&nbsp; Category: <b>' + escapeHtml(hd.cats) + '</b> &nbsp;|&nbsp; ' + r.list.length + ' items, ' + r.records + ' records</div>' +
+      sumTableHtml(r, '') + '</body></html>';
+    var old = document.getElementById('printFrame'); if(old) old.parentNode.removeChild(old);
+    var frame = document.createElement('iframe');
+    frame.id = 'printFrame'; frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(frame);
+    var d = frame.contentWindow.document; d.open(); d.write(html); d.close();
+    setTimeout(function(){ try{ frame.contentWindow.focus(); frame.contentWindow.print(); }catch(e){ alert('Could not open the print dialog: ' + e.message); } }, 300);
+  }
+
   // ---------- Admin: tile menu (Unpost / Fresh Market / Goods) ----------
   var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd'];
   function adminOpenBox(name){

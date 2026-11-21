@@ -458,3 +458,19 @@
 .review-table{margin:6px 0 4px}
 .review-table tr.changed td{background:#fff3d6}
 .review-table tr.changed td:last-child{color:var(--accent)}
+
+/* ===== Summary Report ===== */
+.sum-dates{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sum-seg{display:flex;gap:8px;margin-top:6px}
+.sum-seg button{flex:1;padding:11px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;font:inherit;font-weight:700;color:var(--text);cursor:pointer}
+.sum-seg button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.sum-cats{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}
+.sum-chip{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;font-size:13px;cursor:pointer;user-select:none}
+.sum-chip input{width:auto;margin:0}
+.sum-chip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:700}
+.sum-head{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted);margin:2px 0 10px}
+.sum-head b{color:var(--text)}
+.sum-table td.num,.sum-table th.num{text-align:right;white-space:nowrap}
+.sum-table td.rank,.sum-table th.rank{width:44px;text-align:center}
+.sum-table tbody tr:first-child td{font-weight:700}
+.sum-dates input{width:100%;min-width:0}
