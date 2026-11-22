@@ -126,6 +126,15 @@
     return { startISO: start.toISOString(), endISO: end.toISOString() };
   }
 
+  // Reference number: plant + MMYY + disposal id (01 Fresh Market, 02 Goods) + 3-digit
+  // sequence, handed out by the database so two devices can never get the same one.
+  function genRefNo(plant, disposalId){
+    return sb.rpc('drs_next_ref', { p_plant: plant, p_disposal: disposalId }).then(function(res){
+      if(res.error || !res.data) throw new Error('Could not generate a Reference Number' + (res.error ? ': ' + res.error.message : '.'));
+      return String(res.data);
+    });
+  }
+
   // Finds a pending (or other status) batch for a given category/staff/
   // supervisor within one calendar day. referenceDate defaults to now
   // (used at submit time); Admin's Problem PLU resolution passes each
@@ -135,7 +144,7 @@
   function findBatchForDay(plant, category, staff, supervisor, checkedBy, status, referenceDate){
     var bounds = dayBoundsISO(referenceDate || new Date());
     var query = sb.from('bad_stock_fresh_market')
-      .select('batch_id, plu_code, quantity, id')
+      .select('batch_id, plu_code, quantity, id, ref_no')
       .eq('status', status)
       .eq('plant', plant)
       .eq('staff', staff)
@@ -158,6 +167,11 @@
     var when = entryDate ? new Date(entryDate) : new Date();
     return findBatchForDay(plant, category, staff, supervisor, checkedBy, status, when)
       .then(function(existing){
+        // A brand-new pending batch gets a Reference Number; stacking onto an existing
+        // batch keeps whatever that batch already has (older batches have none).
+        var refP = existing ? Promise.resolve(existing.existingRows[0].ref_no || null)
+                            : (status === 'pending' ? genRefNo(plant, '01') : Promise.resolve(null));
+        return refP.then(function(refNo){
         var batchId = existing ? existing.batchId : ('B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
         var existingByPlu = {};
         if(existing){
@@ -193,6 +207,7 @@
               sloc: '1000',
               reason: '2',
               status: status,
+              ref_no: refNo,
               submission_id: submissionId
             });
           }
@@ -203,6 +218,7 @@
         return Promise.all(ops).then(function(results){
           results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
           return true;
+        });
         });
       });
   }
@@ -282,6 +298,8 @@
 
             return findBatchForDay(first.plant, category, first.staff, first.supervisor, first.checked_by, 'pending', first.entry_date)
               .then(function(existing){
+               var refP = existing ? Promise.resolve(existing.existingRows[0].ref_no || null) : genRefNo(first.plant, '01');
+               return refP.then(function(refNo){
                 var ops = [];
                 var totalQty = Math.round(groupRows.reduce(function(sum, r){ return sum + r.quantity; }, 0) * 100) / 100;
 
@@ -303,7 +321,7 @@
                     // the resolved details; fold any extra same-plu rows'
                     // quantity into it and delete those extras.
                     ops.push(sb.from('bad_stock_fresh_market').update({
-                      batch_id: existing.batchId, category: category, status: 'pending',
+                      batch_id: existing.batchId, category: category, status: 'pending', ref_no: refNo,
                       description: description, material: material, uom: uom, quantity: totalQty
                     }).eq('id', first.id));
                     if(groupRows.length > 1){
@@ -315,7 +333,7 @@
                   // becomes the seed of a brand new one.
                   var newBatchId = 'B' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
                   ops.push(sb.from('bad_stock_fresh_market').update({
-                    batch_id: newBatchId, category: category, status: 'pending',
+                    batch_id: newBatchId, category: category, status: 'pending', ref_no: refNo,
                     description: description, material: material, uom: uom, quantity: totalQty
                   }).eq('id', first.id));
                   if(groupRows.length > 1){
@@ -324,6 +342,7 @@
                 }
 
                 return Promise.all(ops);
+               });
               });
           });
         }, Promise.resolve());
@@ -370,6 +389,8 @@
               staff: row.staff,
               supervisor: row.supervisor,
               checkedBy: row.checked_by || '',
+              refNo: row.ref_no || '',
+              deletedAt: row.deleted_at || null,
               dateDisplay: formatDateDisplay(row.entry_date),
               entryDate: row.entry_date,
               keyInBy: row.key_in_by || '',
@@ -436,6 +457,7 @@
               staff: row.staff,
               supervisor: row.supervisor,
               checkedBy: row.checked_by || '',
+              refNo: row.ref_no || '',
               dateDisplay: formatDateDisplay(row.entry_date),
               materialDocument: row.material_document || '',
               keyInBy: row.key_in_by || '',
@@ -523,7 +545,8 @@
         reason: '2',
         status: batchInfo.status || 'pending',
         reverted_at: batchInfo.revertedAt || null,
-        reverted_doc: batchInfo.revertedDoc || null
+        reverted_doc: batchInfo.revertedDoc || null,
+        ref_no: batchInfo.refNo || null
       };
     });
 
@@ -614,6 +637,7 @@
             staff: first.staff,
             supervisor: first.supervisor,
             checkedBy: first.checked_by || '',
+            refNo: first.ref_no || '',
             materialDocument: materialDocument,
             keyInBy: keyInBy,
             items: rows.map(function(r){
@@ -625,9 +649,13 @@
   }
 
   // ---------- Supabase: deletePendingBatch ----------
-  function deletePendingBatchFromSupabase(txnId){
-    return sb.from('bad_stock_fresh_market').delete().eq('batch_id', txnId)
-      .then(function(res){
+  // A batch with a Reference Number is never erased: it is marked 'deleted' and stays
+  // visible in Admin > Deleted Disposal Record. Older batches without one are removed as before.
+  function deletePendingBatchFromSupabase(txnId, keepRecord){
+    var q = keepRecord
+      ? sb.from('bad_stock_fresh_market').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', txnId).eq('status', 'pending')
+      : sb.from('bad_stock_fresh_market').delete().eq('batch_id', txnId);
+    return q.then(function(res){
         if(res.error) throw new Error(res.error.message);
         return true;
       });
@@ -2010,12 +2038,15 @@
     return {
       category: batch.category, staff: batch.staff, supervisor: batch.supervisor, checkedBy: batch.checkedBy,
       status: batch.reverted ? 'reverted' : 'pending',
-      entryDate: batch.entryDate, revertedAt: batch.revertedAt, revertedDoc: batch.revertedDoc
+      entryDate: batch.entryDate, revertedAt: batch.revertedAt, revertedDoc: batch.revertedDoc, refNo: batch.refNo
     };
   }
   function revTypeTag(batch, label){
     if(!batch.reverted) return '';
     return '<span class="cat-tag" style="background:#fef3c7;color:#92400e;margin-right:6px;">' + escapeHtml(label) + '</span>';
+  }
+  function refTag(batch){
+    return batch && batch.refNo ? '<span class="ref-tag" title="Reference Number">' + escapeHtml(batch.refNo) + '</span>' : '';
   }
   function revNoteHtml(batch){
     if(!batch.reverted) return '';
@@ -2134,7 +2165,7 @@
       st.innerHTML = '';
       out.innerHTML = unpostFound.map(function(b, i){
         return '<div class="card" style="margin-top:10px;">' +
-          '<div class="pending-card-header"><div><span class="cat-tag" style="background:#fef3c7;color:#92400e;margin-right:6px;">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span><span class="cat-tag">' + escapeHtml(b.category) + '</span></div>' +
+          '<div class="pending-card-header"><div><span class="cat-tag" style="background:#fef3c7;color:#92400e;margin-right:6px;">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span><span class="cat-tag">' + escapeHtml(b.category) + '</span>' + refTag(b) + '</div>' +
           '<div class="pending-meta">' + escapeHtml(formatDateDisplay(b.entryDate)) + '</div></div>' +
           '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + '</div>' +
           '<div class="pending-meta">Material Document ' + escapeHtml(b.doc) + ' &middot; Key In By ' + escapeHtml(b.keyInBy || '-') +
@@ -2371,6 +2402,7 @@
           staff: batch.staff,
           supervisor: batch.supervisor,
           checkedBy: batch.checkedBy || '',
+          refNo: batch.refNo || '',
           materialDocument: batch.materialDocument,
           keyInBy: batch.keyInBy,
           items: batch.items
@@ -2382,7 +2414,7 @@
       card.className = 'card';
       card.innerHTML =
         '<div class="pending-card-header">' +
-          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
         '</div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
@@ -2444,7 +2476,7 @@
         delete editMode[key];
         card.innerHTML =
           '<div class="pending-card-header">' +
-            '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+            '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
           '</div>' +
           '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
@@ -2477,7 +2509,7 @@
       card.innerHTML =
         '<div class="pending-toggle" onclick="togglePendingCard(this, \'' + key + '\')">' +
           '<div class="pending-card-header">' +
-            '<div>' + revTypeTag(batch, 'Fresh Market') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+            '<div>' + revTypeTag(batch, 'Fresh Market') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
             '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '\u25B8' : '\u25BE') + '</span></div>' +
           '</div>' +
           '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') +
@@ -3001,6 +3033,7 @@
           staff: batch.staff,
           supervisor: batch.supervisor,
           checkedBy: batch.checkedBy || '',
+          refNo: batch.refNo || '',
           materialDocument: draft.materialDocument || '',
           keyInBy: draft.keyInBy || '',
           items: draft.items
@@ -3036,7 +3069,8 @@
       'body{font-family:Georgia, "Times New Roman", serif;color:#222;margin:32px;}' +
       '.title{text-align:center;font-size:20px;font-weight:700;letter-spacing:0.5px;margin-bottom:2px;}' +
       '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
-      '.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
+      '.meta{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
+      '.meta .col > div{margin-bottom:8px;}.meta .col > div:last-child{margin-bottom:0;}' +
       '.meta div span{color:#666;}' +
       '.meta div b{display:block;font-size:14px;}' +
       'table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:30px;}' +
@@ -3058,13 +3092,18 @@
             '<div class="title">' + escapeHtml(outletName) + ' &mdash; Fresh Market Disposal</div>' +
             '<div class="subtitle">Bad Stock Report</div>' +
             '<div class="meta">' +
-              '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
-              '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
-              '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
-              '<div><span>' + (newFmt ? 'Supervisor Fresh Market' : 'Supervisor') + '</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
-              (newFmt ? '<div><span>Checked By</span><b>' + escapeHtml(p.checkedBy) + '</b></div>' : '') +
-              '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
-              '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+              '<div class="col">' +
+                (p.refNo ? '<div><span>Reference Number</span><b>' + escapeHtml(p.refNo) + '</b></div>' : '') +
+                '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
+                '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
+                '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
+              '</div>' +
+              '<div class="col">' +
+                '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
+                '<div><span>' + (newFmt ? 'Supervisor Fresh Market' : 'Supervisor') + '</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
+                (newFmt ? '<div><span>Checked By</span><b>' + escapeHtml(p.checkedBy) + '</b></div>' : '') +
+                '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+              '</div>' +
             '</div>' +
           '</th></tr>' +
           '<tr><th class="col-head no">No.</th><th class="col-head">PLU / Product Code</th><th class="col-head">Description</th><th class="col-head">Quantity</th><th class="col-head">UOM</th></tr>' +
@@ -3896,7 +3935,7 @@
       card.className = 'card';
       card.innerHTML =
         '<div class="pending-card-header">' +
-          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
         '</div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
@@ -3915,15 +3954,17 @@
 
     var confirmed = confirm(
       'Delete this pending transaction?\n\n' +
+      (batch.refNo ? 'Ref ' + batch.refNo + '\n' : '') +
       batch.category + ' \u00b7 ' + batch.dateDisplay + '\n' +
       batch.staff + ' / ' + batch.supervisor + (batch.checkedBy ? ' / ' + batch.checkedBy : '') + '\n\n' +
-      'This will permanently remove it from Supabase and cannot be undone.'
+      (batch.refNo ? 'It will be removed from Pending and kept in Admin > Deleted Disposal Record.'
+                   : 'This will permanently remove it from Supabase and cannot be undone.')
     );
     if(!confirmed) return;
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
 
-    deletePendingBatchFromSupabase(batch.txnId)
+    deletePendingBatchFromSupabase(batch.txnId, !!batch.refNo)
       .then(function(){
         adminPendingEntries = adminPendingEntries.filter(function(b){ return b.txnId !== key; });
         renderAdminPendingList();
@@ -4252,7 +4293,7 @@
   // ---------- New Entry: submit ----------
   function gdDayRows(plant, category, staff, supervisor, when){
     var b = dayBoundsISO(when);
-    return sb.from('bad_stock_goods').select('id, batch_id, ean, material, reason, quantity')
+    return sb.from('bad_stock_goods').select('id, batch_id, ean, material, reason, quantity, ref_no')
       .eq('status', 'pending').eq('plant', plant).eq('category', category)
       .eq('staff', staff).eq('supervisor', supervisor)
       .gte('entry_date', b.startISO).lt('entry_date', b.endISO)
@@ -4268,6 +4309,8 @@
   function gdSubmitToSupabase(plant, category, staff, supervisor, items){
     var when = new Date();
     return gdDayRows(plant, category, staff, supervisor, when).then(function(rows){
+     var refP = rows.length ? Promise.resolve(rows[0].ref_no || null) : genRefNo(plant, '02');
+     return refP.then(function(refNo){
       var batchId = rows.length ? rows[0].batch_id : gdNewId('G');
       var byKey = {};
       rows.filter(function(r){ return r.batch_id === batchId; }).forEach(function(r){
@@ -4286,7 +4329,7 @@
             description: it.description, sales_unit: it.salesUnit,
             numerator: (it.numerator === '' || it.numerator == null) ? null : it.numerator,
             department: it.department, quantity: it.qty, reason: it.reason,
-            plant: plant, sloc: '1000', status: 'pending'
+            plant: plant, sloc: '1000', status: 'pending', ref_no: refNo
           });
         }
       });
@@ -4295,6 +4338,7 @@
         results.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
         return true;
       });
+     });
     });
   }
 
@@ -4354,6 +4398,7 @@
       if(!batches[row.batch_id]){
         batches[row.batch_id] = {
           txnId: row.batch_id, category: row.category, staff: row.staff, supervisor: row.supervisor,
+          refNo: row.ref_no || '', deletedAt: row.deleted_at || null,
           entryDate: row.entry_date, dateDisplay: formatDateDisplay(row.entry_date),
           materialDocument: completed ? (row.material_document || '') : '',
           keyInBy: row.key_in_by || '',
@@ -4580,7 +4625,7 @@
       var card = document.createElement('div');
       card.className = 'card';
       card.innerHTML =
-        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
         '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div></div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
         ' &middot; ' + batch.items.length + ' item' + (batch.items.length === 1 ? '' : 's') + '</div>' +
@@ -4618,7 +4663,7 @@
       if(d.submitted){
         delete editMode[key];
         card.innerHTML =
-          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div></div>' +
           '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + '</div>' +
           '<div class="status ok" style="margin-top:12px;">Completed &middot; Material Document ' + escapeHtml(d.materialDocument) + '</div>' +
@@ -4645,7 +4690,7 @@
       var collapsed = gdIsCollapsed(key, batches.length);
       card.innerHTML =
         '<div class="pending-toggle" onclick="gdToggleCard(this, \'' + key + '\')">' +
-          '<div class="pending-card-header"><div>' + revTypeTag(batch, 'Goods') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span></div>' +
+          '<div class="pending-card-header"><div>' + revTypeTag(batch, 'Goods') + '<span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + ' <span class="pending-chevron">' + (collapsed ? '▸' : '▾') + '</span></div></div>' +
           '<div class="pending-meta pending-meta-row" style="margin-top:6px;"><span><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) +
           ' &middot; ' + d.items.length + ' item' + (d.items.length === 1 ? '' : 's') + '</span>' + editActionsHtml('gd', key, editing) + '</div>' +
@@ -4822,7 +4867,8 @@
           numerator: (it.numerator === '' || it.numerator == null) ? null : it.numerator,
           department: it.department, quantity: it.qty, reason: it.reason,
           plant: currentOutletPlant, sloc: '1000', status: batch.reverted ? 'reverted' : 'pending',
-          reverted_at: batch.revertedAt || null, reverted_doc: batch.revertedDoc || null
+          reverted_at: batch.revertedAt || null, reverted_doc: batch.revertedDoc || null,
+          ref_no: batch.refNo || null
         };
       });
       ops.push(sb.from('bad_stock_goods').insert(rows).select('id').then(function(res){
@@ -4867,7 +4913,7 @@
 
   function gdPrintData(batch, doc, keyInBy, items){
     return {
-      date: batch.dateDisplay, category: batch.category, staff: batch.staff, supervisor: batch.supervisor,
+      date: batch.dateDisplay, category: batch.category, staff: batch.staff, supervisor: batch.supervisor, refNo: batch.refNo || '',
       materialDocument: doc || '', keyInBy: keyInBy || '', items: items
     };
   }
@@ -5011,6 +5057,7 @@
       '.title{text-align:center;font-size:20px;font-weight:700;letter-spacing:0.5px;margin-bottom:2px;}' +
       '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
       '.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
+      '.meta .col > div{margin-bottom:8px;}.meta .col > div:last-child{margin-bottom:0;}' +
       '.meta div span{color:#666;}.meta div b{display:block;font-size:14px;}' +
       'table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:30px;}' +
       'thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
@@ -5027,12 +5074,17 @@
           '<div class="title">' + escapeHtml(outletName) + ' &mdash; Goods Disposal</div>' +
           '<div class="subtitle">Bad Stock Goods Report</div>' +
           '<div class="meta">' +
-            '<div><span>Date</span><b>' + escapeHtml(p.date) + '</b></div>' +
-            '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
-            '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
-            '<div><span>Supervisor</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
-            '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
-            '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+            '<div class="col">' +
+              (p.refNo ? '<div><span>Reference Number</span><b>' + escapeHtml(p.refNo) + '</b></div>' : '') +
+              '<div><span>Date</span><b>' + escapeHtml(p.date) + '</b></div>' +
+              '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
+              '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
+            '</div>' +
+            '<div class="col">' +
+              '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
+              '<div><span>Supervisor</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
+              '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+            '</div>' +
           '</div></th></tr>' +
         '<tr><th class="col-head no">No.</th><th class="col-head">Material</th><th class="col-head">Product Code</th><th class="col-head">Description</th><th class="col-head">Qty</th><th class="col-head">Unit</th><th class="col-head">Reason</th></tr>' +
       '</thead><tbody>' + rows + '</tbody></table>' +
@@ -5235,11 +5287,15 @@
   function gdDeleteAdminBatch(key){
     var b = gdAdminPending.find(function(x){ return x.txnId === key; });
     if(!b) return;
-    if(!confirm('Delete this pending goods transaction?\n\n' + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
-        '\n\nThis permanently removes it from Supabase and cannot be undone.')) return;
+    if(!confirm('Delete this pending goods transaction?\n\n' + (b.refNo ? 'Ref ' + b.refNo + '\n' : '') + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
+        (b.refNo ? '\n\nIt will be removed from Pending and kept in Admin > Deleted Disposal Record.'
+                 : '\n\nThis permanently removes it from Supabase and cannot be undone.'))) return;
     var st = document.getElementById('gdAdminDelStatus_' + gdSafe(key));
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
-    sb.from('bad_stock_goods').delete().eq('batch_id', key).then(function(res){
+    var gdQ = b.refNo
+      ? sb.from('bad_stock_goods').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', key).eq('status', 'pending')
+      : sb.from('bad_stock_goods').delete().eq('batch_id', key);
+    gdQ.then(function(res){
       if(res.error) throw new Error(res.error.message);
       gdAdminPending = gdAdminPending.filter(function(x){ return x.txnId !== key; });
       gdPending = gdPending.filter(function(x){ return x.txnId !== key; });
@@ -5506,7 +5562,7 @@
   }
 
   // ---------- Admin: tile menu (Unpost / Fresh Market / Goods) ----------
-  var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd'];
+  var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd', 'Deleted'];
   function adminOpenBox(name){
     ADMIN_BOXES.forEach(function(n){
       var el = document.getElementById('adminBox' + n);
@@ -5515,6 +5571,7 @@
     document.getElementById('adminMenu').style.display = 'none';
     if(name === 'Fm') loadAdminPendingList();
     if(name === 'Gd') gdLoadAdminPending();
+    if(name === 'Deleted') delReset();
     window.scrollTo(0, 0);
   }
   function adminCloseBox(){
@@ -5524,6 +5581,44 @@
     });
     document.getElementById('adminMenu').style.display = 'block';
     window.scrollTo(0, 0);
+  }
+
+
+  // ---------- Admin: Deleted Disposal Record ----------
+  var delType = null;
+  function delReset(){
+    delType = null;
+    document.getElementById('delTypeFm').classList.remove('active');
+    document.getElementById('delTypeGd').classList.remove('active');
+    document.getElementById('delList').innerHTML = '<div class="empty">Choose Fresh Market or Goods to view deleted records.</div>';
+  }
+  function delSetType(t){
+    delType = t;
+    document.getElementById('delTypeFm').classList.toggle('active', t === 'fm');
+    document.getElementById('delTypeGd').classList.toggle('active', t === 'gd');
+    var box = document.getElementById('delList');
+    box.innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    var p = t === 'fm' ? getPendingEntriesFromSupabase('deleted') : gdGetPendingFromSupabase('deleted');
+    p.then(function(list){
+      if(delType !== t) return;
+      list.sort(function(a, b){ return String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')); });
+      if(!list.length){ box.innerHTML = '<div class="empty">No deleted ' + (t === 'fm' ? 'Fresh Market' : 'Goods') + ' records.</div>'; return; }
+      box.innerHTML = list.map(function(b){
+        var items = b.items.map(function(it){
+          return t === 'fm'
+            ? escapeHtml(it.description || ('PLU ' + it.plu)) + ' &times; ' + escapeHtml(String(it.qty)) + (it.uom ? ' ' + escapeHtml(it.uom) : '')
+            : escapeHtml(it.description || it.material) + ' &times; ' + escapeHtml(String(it.qty)) + ' ' + escapeHtml(it.salesUnit || '');
+        }).join(', ');
+        return '<div class="card">' +
+          '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(b.category) + '</span>' + refTag(b) + '</div>' +
+          '<div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
+          '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + (b.checkedBy ? ' &middot; ' + escapeHtml(b.checkedBy) : '') + '</div>' +
+          '<div class="pending-meta" style="margin-top:8px;">' + items + '</div>' +
+          '<div class="status err" style="margin-top:10px;">Deleted' + (b.deletedAt ? ' on ' + escapeHtml(formatDateDisplay(b.deletedAt)) : '') + '</div></div>';
+      }).join('');
+    }).catch(function(err){
+      box.innerHTML = '<div class="status err">Failed to load deleted records: ' + escapeHtml(err.message) + '</div>';
+    });
   }
 
   function adminSwitchPane(name){
