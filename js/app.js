@@ -3044,6 +3044,11 @@
       });
   }
 
+  // A value on the printout, or an empty ruled line to write on when it isn't filled in yet.
+  function printVal(v){
+    return (v && String(v).trim()) ? '<b>' + escapeHtml(v) + '</b>' : '<b class="blank"></b>';
+  }
+
   function openPrintView(p){
     // Includes a UOM column, right of Quantity, on the printed slip.
     var itemsRows = p.items.map(function(it, idx){
@@ -3072,7 +3077,7 @@
       '.meta{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
       '.meta .col > div{margin-bottom:8px;}.meta .col > div:last-child{margin-bottom:0;}' +
       '.meta div span{color:#666;}' +
-      '.meta div b{display:block;font-size:14px;}' +
+      '.meta div b{display:block;font-size:14px;}.meta div b.blank{height:20px;width:170px;border-bottom:1px solid #333;margin-top:2px;}' +
       'table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:30px;}' +
       'thead{display:table-header-group;}' + /* explicit: repeat this on every printed page */
       'tr{page-break-inside:avoid;}' +
@@ -3096,13 +3101,13 @@
                 (p.refNo ? '<div><span>Reference Number</span><b>' + escapeHtml(p.refNo) + '</b></div>' : '') +
                 '<div><span>Date</span><b>' + escapeHtml(p.date) + (p.time ? ', ' + escapeHtml(p.time) : '') + '</b></div>' +
                 '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
-                '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
+                '<div><span>Material Document</span>' + printVal(p.materialDocument) + '</div>' +
               '</div>' +
               '<div class="col">' +
                 '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
                 '<div><span>' + (newFmt ? 'Supervisor Fresh Market' : 'Supervisor') + '</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
                 (newFmt ? '<div><span>Checked By</span><b>' + escapeHtml(p.checkedBy) + '</b></div>' : '') +
-                '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+                '<div><span>Key In By</span>' + printVal(p.keyInBy) + '</div>' +
               '</div>' +
             '</div>' +
           '</th></tr>' +
@@ -5058,7 +5063,7 @@
       '.subtitle{text-align:center;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}' +
       '.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;border-top:1px solid #999;border-bottom:1px solid #999;padding:10px 0;}' +
       '.meta .col > div{margin-bottom:8px;}.meta .col > div:last-child{margin-bottom:0;}' +
-      '.meta div span{color:#666;}.meta div b{display:block;font-size:14px;}' +
+      '.meta div span{color:#666;}.meta div b{display:block;font-size:14px;}.meta div b.blank{height:20px;width:170px;border-bottom:1px solid #333;margin-top:2px;}' +
       'table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:30px;}' +
       'thead{display:table-header-group;}tr{page-break-inside:avoid;}' +
       '.doc-head-cell{border:none;padding:0 0 14px 0;text-align:left;}' +
@@ -5078,12 +5083,12 @@
               (p.refNo ? '<div><span>Reference Number</span><b>' + escapeHtml(p.refNo) + '</b></div>' : '') +
               '<div><span>Date</span><b>' + escapeHtml(p.date) + '</b></div>' +
               '<div><span>Bad Stock Category</span><b>' + escapeHtml(p.category) + '</b></div>' +
-              '<div><span>Material Document</span><b>' + escapeHtml(p.materialDocument) + '</b></div>' +
+              '<div><span>Material Document</span>' + printVal(p.materialDocument) + '</div>' +
             '</div>' +
             '<div class="col">' +
               '<div><span>Staff</span><b>' + escapeHtml(p.staff) + '</b></div>' +
               '<div><span>Supervisor</span><b>' + escapeHtml(p.supervisor) + '</b></div>' +
-              '<div><span>Key In By</span><b>' + escapeHtml(p.keyInBy) + '</b></div>' +
+              '<div><span>Key In By</span>' + printVal(p.keyInBy) + '</div>' +
             '</div>' +
           '</div></th></tr>' +
         '<tr><th class="col-head no">No.</th><th class="col-head">Material</th><th class="col-head">Product Code</th><th class="col-head">Description</th><th class="col-head">Qty</th><th class="col-head">Unit</th><th class="col-head">Reason</th></tr>' +
