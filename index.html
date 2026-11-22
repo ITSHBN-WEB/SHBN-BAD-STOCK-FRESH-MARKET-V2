@@ -559,12 +559,12 @@
           <button class="admin-tile" onclick="adminOpenBox('Fm')">
             <span class="admin-tile-icon">&#10086;</span>
             <span class="admin-tile-title">Fresh Market Disposal</span>
-            <span class="admin-tile-sub">Categories, masterlist item edits, delete pending</span>
+            <span class="admin-tile-sub">Categories, masterlist item edits, delete pending / reverted</span>
           </button>
           <button class="admin-tile" onclick="adminOpenBox('Gd')">
             <span class="admin-tile-icon">&#9635;</span>
             <span class="admin-tile-title">Goods Disposal</span>
-            <span class="admin-tile-sub">Categories, masterlist lookup, delete pending</span>
+            <span class="admin-tile-sub">Categories, masterlist lookup, delete pending / reverted</span>
           </button>
         </div>
       </div>
@@ -607,10 +607,10 @@
       <div id="masterlistSearchResult"></div>
 
       <div class="card">
-        <h2><span class="step-badge">&#128465;</span> Delete Pending Transaction</h2>
+        <h2><span class="step-badge">&#128465;</span> Delete Pending / Reverted Transaction</h2>
         <button class="btn ghost" style="margin-top:0;" onclick="loadAdminPendingList()">Refresh List</button>
       </div>
-      <div id="adminPendingEmpty" class="empty" style="display:none;">No pending transactions.</div>
+      <div id="adminPendingEmpty" class="empty" style="display:none;">No pending or reverted transactions.</div>
       <div id="adminPendingList"></div>
       </div>
 
@@ -648,10 +648,10 @@
       <div id="gdAdmSearchResult"></div>
 
       <div class="card">
-        <h2><span class="step-badge">&#128465;</span> Delete Pending Goods Transaction</h2>
+        <h2><span class="step-badge">&#128465;</span> Delete Pending / Reverted Goods Transaction</h2>
         <button class="btn ghost" style="margin-top:0;" onclick="gdLoadAdminPending()">Refresh List</button>
       </div>
-      <div id="gdAdminPendingEmpty" class="empty" style="display:none;">No pending goods transactions.</div>
+      <div id="gdAdminPendingEmpty" class="empty" style="display:none;">No pending or reverted goods transactions.</div>
       <div id="gdAdminPendingList"></div>
       </div>
       </div>
@@ -663,6 +663,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=10"></script>
+<script src="js/app.js?v=11"></script>
 </body>
 </html>

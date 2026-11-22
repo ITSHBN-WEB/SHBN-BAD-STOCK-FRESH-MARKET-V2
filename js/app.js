@@ -651,9 +651,9 @@
   // ---------- Supabase: deletePendingBatch ----------
   // A batch with a Reference Number is never erased: it is marked 'deleted' and stays
   // visible in Admin > Deleted Disposal Record. Older batches without one are removed as before.
-  function deletePendingBatchFromSupabase(txnId, keepRecord){
+  function deletePendingBatchFromSupabase(txnId, keepRecord, fromStatus){
     var q = keepRecord
-      ? sb.from('bad_stock_fresh_market').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', txnId).eq('status', 'pending')
+      ? sb.from('bad_stock_fresh_market').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', txnId).eq('status', fromStatus || 'pending')
       : sb.from('bad_stock_fresh_market').delete().eq('batch_id', txnId);
     return q.then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -3926,8 +3926,10 @@
     document.getElementById('adminPendingList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('adminPendingEmpty').style.display = 'none';
 
-    return getPendingEntriesFromSupabase()
-      .then(function(entries){
+    return Promise.all([getPendingEntriesFromSupabase(), getPendingEntriesFromSupabase('reverted')])
+      .then(function(rs){
+        rs[1].forEach(function(b){ b.reverted = true; });
+        var entries = rs[0].concat(rs[1]);
         adminPendingEntries = entries;
         renderAdminPendingList();
       })
@@ -3959,7 +3961,7 @@
       card.className = 'card';
       card.innerHTML =
         '<div class="pending-card-header">' +
-          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + '</div>' +
+          '<div><span class="cat-tag">' + escapeHtml(batch.category) + '</span>' + refTag(batch) + (batch.reverted ? '<span class="st-chip reverted">Reverted</span>' : '') + '</div>' +
           '<div class="pending-meta">' + escapeHtml(batch.dateDisplay) + '</div>' +
         '</div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
@@ -3977,19 +3979,20 @@
     var statusEl = document.getElementById('adminDeleteStatus_' + safeKey);
 
     var confirmed = confirm(
-      'Delete this pending transaction?\n\n' +
+      'Delete this ' + (batch.reverted ? 'reverted' : 'pending') + ' transaction?\n\n' +
       (batch.refNo ? 'Ref ' + batch.refNo + '\n' : '') +
       batch.category + ' \u00b7 ' + batch.dateDisplay + '\n' +
       batch.staff + ' / ' + batch.supervisor + (batch.checkedBy ? ' / ' + batch.checkedBy : '') + '\n\n' +
-      (batch.refNo ? 'It will be removed from Pending and kept in Admin > Deleted Disposal Record.'
+      (batch.refNo ? 'It will be removed from ' + (batch.reverted ? 'Reverted Disposal' : 'Pending') + ' and kept in Admin > Deleted Disposal Record.'
                    : 'This will permanently remove it from Supabase and cannot be undone.')
     );
     if(!confirmed) return;
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
 
-    deletePendingBatchFromSupabase(batch.txnId, !!batch.refNo)
+    deletePendingBatchFromSupabase(batch.txnId, !!batch.refNo, batch.reverted ? 'reverted' : 'pending')
       .then(function(){
+        if(batch.reverted){ revFm = revFm.filter(function(b){ return b.txnId !== key; }); delete pendingDraft[key]; revLoaded = false; revUpdateCount(); }
         adminPendingEntries = adminPendingEntries.filter(function(b){ return b.txnId !== key; });
         renderAdminPendingList();
 
@@ -5283,8 +5286,9 @@
   function gdLoadAdminPending(){
     document.getElementById('gdAdminPendingList').innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
     document.getElementById('gdAdminPendingEmpty').style.display = 'none';
-    return gdGetPendingFromSupabase().then(function(entries){
-      gdAdminPending = entries;
+    return Promise.all([gdGetPendingFromSupabase(), gdGetPendingFromSupabase('reverted')]).then(function(rs){
+      rs[1].forEach(function(b){ b.reverted = true; });
+      gdAdminPending = rs[0].concat(rs[1]);
       gdRenderAdminPending();
     }).catch(function(err){
       document.getElementById('gdAdminPendingList').innerHTML = gdErrHtml('Failed to load pending goods transactions: ' + err.message);
@@ -5300,7 +5304,7 @@
       var card = document.createElement('div');
       card.className = 'card';
       card.innerHTML =
-        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(b.category) + '</span></div><div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
+        '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(b.category) + '</span>' + refTag(b) + (b.reverted ? '<span class="st-chip reverted">Reverted</span>' : '') + '</div><div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + '</div>' +
         '<div class="pending-meta" style="margin-top:8px;">' + list + '</div>' +
         '<button class="btn danger btn-full" onclick="gdDeleteAdminBatch(\'' + b.txnId + '\')">Delete Transaction</button>' +
@@ -5311,18 +5315,19 @@
   function gdDeleteAdminBatch(key){
     var b = gdAdminPending.find(function(x){ return x.txnId === key; });
     if(!b) return;
-    if(!confirm('Delete this pending goods transaction?\n\n' + (b.refNo ? 'Ref ' + b.refNo + '\n' : '') + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
-        (b.refNo ? '\n\nIt will be removed from Pending and kept in Admin > Deleted Disposal Record.'
+    if(!confirm('Delete this ' + (b.reverted ? 'reverted' : 'pending') + ' goods transaction?\n\n' + (b.refNo ? 'Ref ' + b.refNo + '\n' : '') + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
+        (b.refNo ? '\n\nIt will be removed from ' + (b.reverted ? 'Reverted Disposal' : 'Pending') + ' and kept in Admin > Deleted Disposal Record.'
                  : '\n\nThis permanently removes it from Supabase and cannot be undone.'))) return;
     var st = document.getElementById('gdAdminDelStatus_' + gdSafe(key));
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
     var gdQ = b.refNo
-      ? sb.from('bad_stock_goods').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', key).eq('status', 'pending')
+      ? sb.from('bad_stock_goods').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', key).eq('status', b.reverted ? 'reverted' : 'pending')
       : sb.from('bad_stock_goods').delete().eq('batch_id', key);
     gdQ.then(function(res){
       if(res.error) throw new Error(res.error.message);
       gdAdminPending = gdAdminPending.filter(function(x){ return x.txnId !== key; });
       gdPending = gdPending.filter(function(x){ return x.txnId !== key; });
+      if(b.reverted){ revGd = revGd.filter(function(x){ return x.txnId !== key; }); revLoaded = false; revUpdateCount(); }
       delete gdDraft[key];
       gdLastPendingSig = null;
       gdRenderAdminPending();
