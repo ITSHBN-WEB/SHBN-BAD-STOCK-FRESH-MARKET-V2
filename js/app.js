@@ -390,7 +390,7 @@
               supervisor: row.supervisor,
               checkedBy: row.checked_by || '',
               refNo: row.ref_no || '',
-              deletedAt: row.deleted_at || null,
+              deletedAt: row.deleted_at || null, deleteRemark: row.delete_remark || '',
               dateDisplay: formatDateDisplay(row.entry_date),
               entryDate: row.entry_date,
               keyInBy: row.key_in_by || '',
@@ -651,9 +651,9 @@
   // ---------- Supabase: deletePendingBatch ----------
   // A batch with a Reference Number is never erased: it is marked 'deleted' and stays
   // visible in Admin > Deleted Disposal Record. Older batches without one are removed as before.
-  function deletePendingBatchFromSupabase(txnId, keepRecord, fromStatus){
+  function deletePendingBatchFromSupabase(txnId, keepRecord, fromStatus, remark){
     var q = keepRecord
-      ? sb.from('bad_stock_fresh_market').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', txnId).eq('status', fromStatus || 'pending')
+      ? sb.from('bad_stock_fresh_market').update({ status: 'deleted', deleted_at: new Date().toISOString(), delete_remark: remark || null }).eq('batch_id', txnId).eq('status', fromStatus || 'pending')
       : sb.from('bad_stock_fresh_market').delete().eq('batch_id', txnId);
     return q.then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -3920,6 +3920,17 @@
       });
   }
 
+  // Remark box + Delete button: the button stays disabled until a remark is typed.
+  function delRemarkHtml(id, btnOnclick){
+    return '<label style="margin-top:10px;">Remark (required to delete)</label>' +
+      '<input type="text" id="remark_' + id + '" maxlength="200" autocomplete="off" placeholder="Reason for deleting this record" oninput="document.getElementById(\'delbtn_' + id + '\').disabled = !this.value.trim();">' +
+      '<button class="btn danger btn-full" id="delbtn_' + id + '" disabled onclick="' + btnOnclick + '">Delete Transaction</button>';
+  }
+  function delRemarkValue(id){
+    var el = document.getElementById('remark_' + id);
+    return el ? el.value.trim() : '';
+  }
+
   var adminPendingEntries = [];
 
   function loadAdminPendingList(){
@@ -3966,7 +3977,7 @@
         '</div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(batch.staff) + '</b> &middot; ' + escapeHtml(batch.supervisor) + (batch.checkedBy ? ' &middot; ' + escapeHtml(batch.checkedBy) : '') + '</div>' +
         '<div class="pending-meta" style="margin-top:8px;">' + itemsList + '</div>' +
-        '<button class="btn danger btn-full" onclick="deleteAdminPendingBatch(\'' + key + '\')">Delete Transaction</button>' +
+        delRemarkHtml('fm_' + safeKey, 'deleteAdminPendingBatch(\'' + key + '\')') +
         '<div id="adminDeleteStatus_' + safeKey + '"></div>';
       container.appendChild(card);
     });
@@ -3977,12 +3988,14 @@
     if(!batch) return;
     var safeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
     var statusEl = document.getElementById('adminDeleteStatus_' + safeKey);
+    var remark = delRemarkValue('fm_' + safeKey);
+    if(!remark){ statusEl.innerHTML = '<div class="status err">Enter a Remark before deleting.</div>'; return; }
 
     var confirmed = confirm(
       'Delete this ' + (batch.reverted ? 'reverted' : 'pending') + ' transaction?\n\n' +
       (batch.refNo ? 'Ref ' + batch.refNo + '\n' : '') +
       batch.category + ' \u00b7 ' + batch.dateDisplay + '\n' +
-      batch.staff + ' / ' + batch.supervisor + (batch.checkedBy ? ' / ' + batch.checkedBy : '') + '\n\n' +
+      batch.staff + ' / ' + batch.supervisor + (batch.checkedBy ? ' / ' + batch.checkedBy : '') + '\nRemark: ' + remark + '\n\n' +
       (batch.refNo ? 'It will be removed from ' + (batch.reverted ? 'Reverted Disposal' : 'Pending') + ' and kept in Admin > Deleted Disposal Record.'
                    : 'This will permanently remove it from Supabase and cannot be undone.')
     );
@@ -3990,7 +4003,7 @@
 
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
 
-    deletePendingBatchFromSupabase(batch.txnId, !!batch.refNo, batch.reverted ? 'reverted' : 'pending')
+    deletePendingBatchFromSupabase(batch.txnId, !!batch.refNo, batch.reverted ? 'reverted' : 'pending', remark)
       .then(function(){
         if(batch.reverted){ revFm = revFm.filter(function(b){ return b.txnId !== key; }); delete pendingDraft[key]; revLoaded = false; revUpdateCount(); }
         adminPendingEntries = adminPendingEntries.filter(function(b){ return b.txnId !== key; });
@@ -4425,7 +4438,7 @@
       if(!batches[row.batch_id]){
         batches[row.batch_id] = {
           txnId: row.batch_id, category: row.category, staff: row.staff, supervisor: row.supervisor,
-          refNo: row.ref_no || '', deletedAt: row.deleted_at || null,
+          refNo: row.ref_no || '', deletedAt: row.deleted_at || null, deleteRemark: row.delete_remark || '',
           entryDate: row.entry_date, dateDisplay: formatDateDisplay(row.entry_date),
           materialDocument: completed ? (row.material_document || '') : '',
           keyInBy: row.key_in_by || '',
@@ -5307,7 +5320,7 @@
         '<div class="pending-card-header"><div><span class="cat-tag">' + escapeHtml(b.category) + '</span>' + refTag(b) + (b.reverted ? '<span class="st-chip reverted">Reverted</span>' : '') + '</div><div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + '</div>' +
         '<div class="pending-meta" style="margin-top:8px;">' + list + '</div>' +
-        '<button class="btn danger btn-full" onclick="gdDeleteAdminBatch(\'' + b.txnId + '\')">Delete Transaction</button>' +
+        delRemarkHtml('gd_' + gdSafe(b.txnId), 'gdDeleteAdminBatch(\'' + b.txnId + '\')') +
         '<div id="gdAdminDelStatus_' + gdSafe(b.txnId) + '"></div>';
       c.appendChild(card);
     });
@@ -5315,13 +5328,15 @@
   function gdDeleteAdminBatch(key){
     var b = gdAdminPending.find(function(x){ return x.txnId === key; });
     if(!b) return;
-    if(!confirm('Delete this ' + (b.reverted ? 'reverted' : 'pending') + ' goods transaction?\n\n' + (b.refNo ? 'Ref ' + b.refNo + '\n' : '') + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor +
+    if(!confirm('Delete this ' + (b.reverted ? 'reverted' : 'pending') + ' goods transaction?\n\n' + (b.refNo ? 'Ref ' + b.refNo + '\n' : '') + b.category + ' · ' + b.dateDisplay + '\n' + b.staff + ' / ' + b.supervisor + '\nRemark: ' + remark +
         (b.refNo ? '\n\nIt will be removed from ' + (b.reverted ? 'Reverted Disposal' : 'Pending') + ' and kept in Admin > Deleted Disposal Record.'
                  : '\n\nThis permanently removes it from Supabase and cannot be undone.'))) return;
     var st = document.getElementById('gdAdminDelStatus_' + gdSafe(key));
+    var remark = delRemarkValue('gd_' + gdSafe(key));
+    if(!remark){ st.innerHTML = gdErrHtml('Enter a Remark before deleting.'); return; }
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Deleting...</div>';
     var gdQ = b.refNo
-      ? sb.from('bad_stock_goods').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('batch_id', key).eq('status', b.reverted ? 'reverted' : 'pending')
+      ? sb.from('bad_stock_goods').update({ status: 'deleted', deleted_at: new Date().toISOString(), delete_remark: remark }).eq('batch_id', key).eq('status', b.reverted ? 'reverted' : 'pending')
       : sb.from('bad_stock_goods').delete().eq('batch_id', key);
     gdQ.then(function(res){
       if(res.error) throw new Error(res.error.message);
@@ -5713,7 +5728,8 @@
           '<div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
           '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + (b.checkedBy ? ' &middot; ' + escapeHtml(b.checkedBy) : '') + '</div>' +
           '<div class="pending-meta" style="margin-top:8px;">' + items + '</div>' +
-          '<div class="status err" style="margin-top:10px;">Deleted' + (b.deletedAt ? ' on ' + escapeHtml(formatDateDisplay(b.deletedAt)) : '') + '</div></div>';
+          '<div class="status err" style="margin-top:10px;">Deleted' + (b.deletedAt ? ' on ' + escapeHtml(formatDateDisplay(b.deletedAt)) : '') +
+            (b.deleteRemark ? '<br>Remark: ' + escapeHtml(b.deleteRemark) : '') + '</div></div>';
       }).join('');
     }).catch(function(err){
       box.innerHTML = '<div class="status err">Failed to load deleted records: ' + escapeHtml(err.message) + '</div>';
