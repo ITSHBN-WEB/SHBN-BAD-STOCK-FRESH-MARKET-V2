@@ -5314,31 +5314,86 @@
   // =====================================================================
   // ================= DOCUMENTS (both disposal types) ===================
   // =====================================================================
+  var docsReg = [];   // every document card currently on screen, so a click can open it
+
   function docsGroup(rows, type){
     var by = {}, order = [];
-    rows.forEach(function(r){
+    rows.slice().sort(function(x, y){ return Number(x.id) - Number(y.id); }).forEach(function(r){
       if(!by[r.batch_id]){
-        by[r.batch_id] = { type: type, category: r.category, staff: r.staff, supervisor: r.supervisor,
+        by[r.batch_id] = { type: type, batchId: r.batch_id, category: r.category, staff: r.staff, supervisor: r.supervisor,
+          checkedBy: r.checked_by || '', refNo: r.ref_no || '', status: r.status, entryDate: r.entry_date,
           dateDisplay: formatDateDisplay(r.entry_date), doc: r.material_document, keyInBy: r.key_in_by,
-          keyInDate: r.key_in_date, items: 0, qty: 0 };
+          keyInDate: r.key_in_date, items: 0, qty: 0, rows: [] };
         order.push(r.batch_id);
       }
-      by[r.batch_id].items++; by[r.batch_id].qty += Number(r.quantity) || 0;
+      by[r.batch_id].items++; by[r.batch_id].qty += Number(r.quantity) || 0; by[r.batch_id].rows.push(r);
     });
     return order.map(function(k){ return by[k]; });
   }
+  function docsStatusLabel(st){ return st === 'keyed_in' ? 'Completed' : st === 'reverted' ? 'Reverted' : 'Pending'; }
   function docsCards(list){
     if(!list.length) return '<div class="empty">Nothing found.</div>';
     return list.map(function(b){
-      return '<div class="card" style="margin-bottom:12px;">' +
+      var idx = docsReg.push(b) - 1;
+      return '<div class="card doc-card" style="margin-bottom:12px;" tabindex="0" onclick="docsOpen(' + idx + ')" onkeydown="if(event.key===\'Enter\')docsOpen(' + idx + ')">' +
         '<div class="pending-card-header"><div><span class="type-tag ' + (b.type === 'fm' ? 'fm' : 'gd') + '">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span>' +
-        '<span class="cat-tag">' + escapeHtml(b.category || '-') + '</span></div>' +
+        '<span class="cat-tag">' + escapeHtml(b.category || '-') + '</span>' + refTag(b) +
+        '<span class="st-chip ' + escapeHtml(b.status) + '">' + docsStatusLabel(b.status) + '</span></div>' +
         '<div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + ' &middot; ' + b.items + ' item' + (b.items === 1 ? '' : 's') + '</div>' +
-        '<div class="status ok" style="margin-top:10px;">Material Document ' + escapeHtml(b.doc || '') + ' &middot; keyed in by ' + escapeHtml(b.keyInBy || '-') +
-        (b.keyInDate ? ' &middot; ' + escapeHtml(formatDateDisplay(b.keyInDate)) : '') + '</div></div>';
+        (b.status === 'keyed_in'
+          ? '<div class="status ok" style="margin-top:10px;">Material Document ' + escapeHtml(b.doc || '') + ' &middot; keyed in by ' + escapeHtml(b.keyInBy || '-') +
+            (b.keyInDate ? ' &middot; ' + escapeHtml(formatDateDisplay(b.keyInDate)) : '') + '</div>'
+          : '<div class="pending-meta" style="margin-top:8px;">Not keyed in yet</div>') +
+        '<div class="doc-open-hint">Tap to view all details &rarr;</div></div>';
     }).join('');
   }
+
+  // ----- detail view of one document, with Print -----
+  function docsOpen(i){
+    var b = docsReg[i]; if(!b) return;
+    var fm = b.type === 'fm';
+    var head = fm ? ['PLU / Product Code', 'Description', 'Material', 'Qty', 'UOM'] : ['Material', 'Product Code', 'Description', 'Qty', 'Unit', 'Reason'];
+    var body = b.rows.map(function(r, n){
+      var cells = fm ? [r.plu_code, r.description, r.material, r.quantity, r.uom] : [r.material, r.ean, r.description, r.quantity, r.sales_unit, r.reason];
+      return '<tr><td>' + (n + 1) + '</td>' + cells.map(function(c){ return '<td>' + escapeHtml(String(c == null ? '' : c)) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    var kv = function(k, v){ return '<div><span>' + k + '</span><b>' + (v ? escapeHtml(v) : '&mdash;') + '</b></div>'; };
+    document.getElementById('docsDetail').innerHTML =
+      '<button class="btn ghost admin-back" onclick="docsClose()">&larr; Back to documents</button>' +
+      '<div class="card" style="margin-top:12px;">' +
+        '<div class="pending-card-header"><div><span class="type-tag ' + (fm ? 'fm' : 'gd') + '">' + (fm ? 'Fresh Market' : 'Goods') + '</span>' +
+        '<span class="st-chip ' + escapeHtml(b.status) + '">' + docsStatusLabel(b.status) + '</span></div></div>' +
+        '<div class="docs-kv">' +
+          kv('Reference Number', b.refNo) + kv('Date', b.dateDisplay) + kv('Bad Stock Category', b.category) +
+          kv('Staff', b.staff) + kv('Supervisor', b.supervisor) + (fm ? kv('Checked By', b.checkedBy) : '') +
+          kv('Material Document', b.doc) + kv('Key In By', b.keyInBy) + kv('Key In Date', b.keyInDate ? formatDateDisplay(b.keyInDate) : '') +
+        '</div>' +
+        '<div style="overflow-x:auto;"><table><thead><tr><th>No.</th>' + head.map(function(x){ return '<th>' + x + '</th>'; }).join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+        '<div class="docs-actions"><button class="btn" onclick="docsPrint(' + i + ')">Print</button></div>' +
+      '</div>';
+    document.getElementById('docsMain').style.display = 'none';
+    document.getElementById('docsDetail').style.display = 'block';
+    window.scrollTo(0, 0);
+  }
+  function docsClose(){
+    document.getElementById('docsDetail').style.display = 'none';
+    document.getElementById('docsMain').style.display = 'block';
+  }
+  function docsPrint(i){
+    var b = docsReg[i]; if(!b) return;
+    var done = b.status === 'keyed_in';
+    var common = { date: b.dateDisplay, category: b.category, staff: b.staff, supervisor: b.supervisor, refNo: b.refNo,
+      materialDocument: done ? (b.doc || '') : '', keyInBy: done ? (b.keyInBy || '') : '' };
+    if(b.type === 'fm'){
+      openPrintView(Object.assign(common, { time: '', checkedBy: b.checkedBy,
+        items: b.rows.map(function(r){ return { plu: r.plu_code, description: r.description, material: r.material, uom: r.uom, qty: r.quantity }; }) }));
+    } else {
+      gdOpenPrint(Object.assign(common, {
+        items: b.rows.map(function(r){ return { material: r.material || '', ean: r.ean || '', description: r.description || '', qty: Number(r.quantity), salesUnit: r.sales_unit || '', reason: r.reason || '' }; }) }));
+    }
+  }
+
   function docsQuery(builder){
     return Promise.all([
       builder(sb.from('bad_stock_fresh_market').select('*')),
@@ -5346,26 +5401,35 @@
     ]).then(function(rs){
       rs.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
       var all = docsGroup(rs[0].data, 'fm').concat(docsGroup(rs[1].data, 'gd'));
-      all.sort(function(a, b){ return String(b.keyInDate || '').localeCompare(String(a.keyInDate || '')); });
+      all.sort(function(a, b){ return String(b.keyInDate || b.entryDate || '').localeCompare(String(a.keyInDate || a.entryDate || '')); });
       return all;
     });
   }
+  // Search by Material Document OR Reference Number (pending, completed and reverted records).
   function docsSearch(){
-    var doc = document.getElementById('docsSearchInput').value.trim();
+    var raw = document.getElementById('docsSearchInput').value.trim();
     var st = document.getElementById('docsSearchStatus');
     var out = document.getElementById('docsSearchResult');
     out.innerHTML = '';
-    if(!doc){ st.innerHTML = gdErrHtml('Enter a material document number.'); return; }
+    if(!raw){ st.innerHTML = gdErrHtml('Enter a material document or reference number.'); return; }
+    var q = /^[\d\s-]+$/.test(raw) ? raw.replace(/[\s-]/g, '') : raw;   // "1008-1126-01-001" works too
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
-    docsQuery(function(q){ return q.eq('material_document', doc).eq('plant', currentOutletPlant); }).then(function(list){
-      st.innerHTML = list.length ? '' : gdErrHtml('No transaction uses material document ' + doc + ' at ' + outletLabel(currentOutletPlant) + '.');
+    var states = ['pending', 'keyed_in', 'reverted'];
+    Promise.all([
+      docsQuery(function(t){ return t.eq('material_document', q).eq('plant', currentOutletPlant).in('status', states); }),
+      docsQuery(function(t){ return t.eq('ref_no', q).eq('plant', currentOutletPlant).in('status', states); })
+    ]).then(function(rs){
+      var seen = {}, list = [];
+      rs[0].concat(rs[1]).forEach(function(b){ var k = b.type + b.batchId; if(!seen[k]){ seen[k] = 1; list.push(b); } });
+      docsReg = [];
+      st.innerHTML = list.length ? '' : gdErrHtml('No record found for "' + q + '" at ' + outletLabel(currentOutletPlant) + '.');
       out.innerHTML = list.length ? docsCards(list) : '';
     }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
   }
   function docsLoadRecent(){
     var el = document.getElementById('docsRecent');
     docsQuery(function(q){ return q.eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('key_in_date', { ascending: false }).limit(60); })
-      .then(function(list){ el.innerHTML = docsCards(list.slice(0, 15)); })
+      .then(function(list){ docsReg = []; el.innerHTML = docsCards(list.slice(0, 15)); })
       .catch(function(err){ el.innerHTML = gdErrHtml(err.message); });
   }
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DRS — Disposal Record System</title>
-  <link rel="stylesheet" href="css/styles.css?v=6">
+  <link rel="stylesheet" href="css/styles.css?v=7">
 </head>
 <body>
 <div id="firstOutletOverlay">
@@ -446,10 +446,12 @@
 
   <div id="docsTabView" style="display:none;">
     <h2 class="page-heading">Documents</h2>
+    <div id="docsDetail" style="display:none;"></div>
+    <div id="docsMain">
     <div class="card">
-      <h2><span class="step-badge">&#128269;</span> Find by Material Document</h2>
-      <label>Material Document No.</label>
-      <input type="text" id="docsSearchInput" placeholder="Enter material document number" onkeydown="if(event.key==='Enter'){event.preventDefault();docsSearch();}">
+      <h2><span class="step-badge">&#128269;</span> Find a Document</h2>
+      <label>Material Document No. or Reference Number</label>
+      <input type="text" id="docsSearchInput" placeholder="Material document or reference number" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();docsSearch();}">
       <button class="btn btn-full" onclick="docsSearch()">Search</button>
       <div id="docsSearchStatus"></div>
     </div>
@@ -457,6 +459,7 @@
     <div class="card">
       <h2><span class="step-badge">&#10003;</span> Recently keyed-in documents</h2>
       <div id="docsRecent"><div class="empty">Loading...</div></div>
+    </div>
     </div>
   </div>
 
@@ -654,6 +657,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>
