@@ -499,3 +499,6 @@
 .docs-kv b{display:block;font-size:14.5px;margin-top:2px;word-break:break-word}
 .docs-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .docs-actions .btn{width:auto;padding:10px 22px}
+
+.docs-search-actions{display:flex;gap:10px;margin-top:10px}
+.docs-search-actions .btn{width:110px;margin-top:0;padding:10px 0;text-align:center}

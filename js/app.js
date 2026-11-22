@@ -2133,22 +2133,31 @@
     var inp = document.getElementById('unpostDocInput');
     var st = document.getElementById('unpostStatus');
     var out = document.getElementById('unpostResult');
-    var doc = inp.value.replace(/\D/g, '');
+    var doc = inp.value.replace(/\D/g, '');   // also accepts 1008-1126-02-001
     inp.value = doc;
     out.innerHTML = '';
-    if(!doc){ st.innerHTML = '<div class="status err">Enter a Material Document number (numbers only).</div>'; return; }
+    if(!doc){ st.innerHTML = '<div class="status err">Enter a Material Document or Reference Number (numbers only).</div>'; return; }
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
     var btn = document.getElementById('unpostSearchBtn'); btn.disabled = true;
-    Promise.all(['bad_stock_fresh_market', 'bad_stock_goods'].map(function(t){
-      return sb.from(t).select('*').eq('material_document', doc).eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('id', { ascending: true });
+    var tbls = ['bad_stock_fresh_market', 'bad_stock_goods'];
+    Promise.all(tbls.map(function(t){
+      return Promise.all(['material_document', 'ref_no'].map(function(col){
+        return sb.from(t).select('*').eq(col, doc).in('status', ['keyed_in', 'pending', 'reverted']).eq('plant', currentOutletPlant).order('id', { ascending: true });
+      })).then(function(two){
+        two.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+        var seen = {}, all = [];
+        two[0].data.concat(two[1].data).forEach(function(row){ if(!seen[row.id]){ seen[row.id] = 1; all.push(row); } });
+        return { data: all, error: null };
+      });
     })).then(function(rs){
-      rs.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
+      var notDone = 0;
+      rs.forEach(function(r){ r.data = r.data.filter(function(row){ if(row.status !== 'keyed_in'){ notDone++; return false; } return true; }); });
       var groups = {}, order = [];
       [['fm', rs[0].data], ['gd', rs[1].data]].forEach(function(p){
         (p[1] || []).forEach(function(row){
           var k = p[0] + ':' + row.batch_id;
           if(!groups[k]){
-            groups[k] = { type: p[0], id: row.batch_id, doc: doc, category: row.category, staff: row.staff, supervisor: row.supervisor,
+            groups[k] = { type: p[0], id: row.batch_id, doc: row.material_document, refNo: row.ref_no || '', category: row.category, staff: row.staff, supervisor: row.supervisor,
               entryDate: row.entry_date, keyInBy: row.key_in_by, keyInDate: row.key_in_date, items: [] };
             order.push(k);
           }
@@ -2159,7 +2168,9 @@
       });
       unpostFound = order.map(function(k){ return groups[k]; });
       if(!unpostFound.length){
-        st.innerHTML = '<div class="status err">No completed record found for Material Document ' + escapeHtml(doc) + ' in this outlet.</div>';
+        st.innerHTML = '<div class="status err">' + (notDone
+          ? 'That record is not completed (still pending or already reverted), so there is nothing to unpost.'
+          : 'No completed record found for "' + escapeHtml(doc) + '" in this outlet.') + '</div>';
         return;
       }
       st.innerHTML = '';
@@ -2179,6 +2190,14 @@
     }).catch(function(err){
       st.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>';
     }).then(function(){ btn.disabled = false; });
+  }
+
+  function unpostClear(){
+    document.getElementById('unpostDocInput').value = '';
+    document.getElementById('unpostStatus').innerHTML = '';
+    document.getElementById('unpostResult').innerHTML = '';
+    unpostFound = [];
+    document.getElementById('unpostDocInput').focus();
   }
 
   function unpostConfirm(i){
@@ -5406,6 +5425,12 @@
     });
   }
   // Search by Material Document OR Reference Number (pending, completed and reverted records).
+  function docsClear(){
+    document.getElementById('docsSearchInput').value = '';
+    document.getElementById('docsSearchStatus').innerHTML = '';
+    document.getElementById('docsSearchResult').innerHTML = '';
+    document.getElementById('docsSearchInput').focus();
+  }
   function docsSearch(){
     var raw = document.getElementById('docsSearchInput').value.trim();
     var st = document.getElementById('docsSearchStatus');
