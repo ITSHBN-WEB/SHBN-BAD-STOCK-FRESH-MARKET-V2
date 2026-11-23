@@ -709,7 +709,10 @@
   function allOutletsScope(){ return !!currentUser && currentUser.category !== 'Outlet'; }
   // A record may hold several material documents ("4900,4901"): match a single number inside the list.
   function docHasToken(value, tok){ return String(value || '').split(',').some(function(x){ return x.trim() === tok; }); }
-  function plantQ(q, plant){ return plant ? q.eq('plant', plant) : q; }
+  function plantQ(q, plant){
+    if(plant) return q.eq('plant', plant);
+    return currentUser && currentUser.category === 'Head Office' ? q.neq('plant', MGMT_PLANT) : q;   // Head Office never sees Management test records
+  }
 
   function rpcCall(name, args){
     return sb.rpc(name, args).then(function(res){
@@ -763,7 +766,13 @@
   function enterAppNow(d){
     currentUser = { id: d.id, loginId: d.login_id, category: d.category, plant: d.plant, token: d.token };
     if(d.category === 'Outlet' && d.plant) currentOutletPlant = d.plant;          // fixed by the account
-    else if(d.category === 'Management') currentOutletPlant = getCurrentOutlet();  // Management picks in Store Assignment
+    else if(d.category === 'Management'){                                          // starts on the Management (test) outlet
+      currentOutletPlant = MGMT_PLANT;
+      try {
+        var mo = JSON.parse(localStorage.getItem(MGMT_OUTLET_KEY) || 'null');
+        if(mo && mo.token === d.token && OUTLET_OPTIONS.some(function(o){ return o.plant === mo.plant; })) currentOutletPlant = mo.plant;
+      } catch(e){}
+    }
     else currentOutletPlant = DEFAULT_OUTLET_PLANT;
     outletPending = false;
     document.getElementById('firstOutletOverlay').style.display = 'none';
@@ -781,7 +790,7 @@
       var sel = document.getElementById(p[0]), wrap = document.getElementById(p[1]);
       if(!sel || !wrap) return;
       if(allOutletsScope()){
-        sel.innerHTML = '<option value="">All outlets</option>' + OUTLET_OPTIONS.map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
+        sel.innerHTML = '<option value="">All outlets</option>' + OUTLET_OPTIONS.filter(function(o){ return o.plant !== MGMT_PLANT || currentUser.category === 'Management'; }).map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
         wrap.style.display = 'block';
       } else wrap.style.display = 'none';
     });
@@ -904,8 +913,11 @@
   var OUTLET_OPTIONS = [
     { plant: '1008', label: '1008-SHBN', shortName: 'SHBN' },
     { plant: '1015', label: '1015-SHPL', shortName: 'SHPL' },
-    { plant: '1007', label: '1007-SHPP', shortName: 'SHPP' }
+    { plant: '1007', label: '1007-SHPP', shortName: 'SHPP' },
+    { plant: '9999', label: 'Management (Test)', shortName: 'MGMT' }   // test records of the Management account
   ];
+  var MGMT_PLANT = '9999';
+  var MGMT_OUTLET_KEY = 'drs_mgmt_outlet_v1';
   var DEFAULT_OUTLET_PLANT = '1008';
   var OUTLET_STORAGE_KEY = 'shbn_bad_stock_outlet_v1';
 
@@ -940,7 +952,7 @@
     var label = outletLabel(currentOutletPlant);
     var cat = currentUser ? currentUser.category : 'Outlet';
     var pill = document.getElementById('outletPillText');
-    if(pill) pill.textContent = cat === 'Head Office' ? 'HEAD OFFICE' : (cat === 'Management' ? 'MANAGEMENT \u00b7 ' + label : 'OUTLET: ' + label);
+    if(pill) pill.textContent = cat === 'Head Office' ? 'HEAD OFFICE' : (cat === 'Management' ? 'MANAGEMENT \u00b7 ' + (currentOutletPlant === MGMT_PLANT ? 'TEST' : label) : 'OUTLET: ' + label);
     var um = document.getElementById('userMenuOutlet');
     if(um) um.textContent = currentUser ? currentUser.loginId + ' (' + cat + ')' : 'Account';
   }
@@ -3372,7 +3384,7 @@
   function applyOutletChange(selected){
     var statusEl = document.getElementById('outletSettingStatus');
     try {
-      localStorage.setItem(OUTLET_STORAGE_KEY, selected);
+      localStorage.setItem(MGMT_OUTLET_KEY, JSON.stringify({ token: currentUser.token, plant: selected }));
     } catch (e) { /* storage unavailable — still applies for this page load */ }
 
     currentOutletPlant = selected;
