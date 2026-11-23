@@ -157,6 +157,10 @@
         <span class="copy">Record disposed goods and manage the related disposal document.</span>
         <div class="launch-cta">Start goods entry <span>&rarr;</span></div>
       </button>
+      <div class="dashboard-panel" data-access="admin">
+        <div class="dashboard-panel-head"><h2>&#9998; Masterlist Update Log</h2><button class="dashboard-link" onclick="loadMasterLog()">Refresh</button></div>
+        <div id="homeMasterLog" class="activity-list"><div class="activity-empty">Loading&hellip;</div></div>
+      </div>
       <div class="dashboard-panel" data-access="records">
         <div class="dashboard-panel-head"><h2>&#9719; Recent Activity</h2><button class="dashboard-link" onclick="openRecords()">View disposal records</button></div>
         <div id="homeRecentActivity" class="activity-list"><div class="activity-empty">Loading recent activity&hellip;</div></div>
@@ -577,15 +581,15 @@
             <span class="admin-tile-title">Fresh Market Disposal</span>
             <span class="admin-tile-sub">Categories, masterlist item edits, delete pending / reverted</span>
           </button>
-          <button class="admin-tile" onclick="adminOpenBox('Accounts')">
-            <span class="admin-tile-icon">&#9823;</span>
-            <span class="admin-tile-title">Accounts</span>
-            <span class="admin-tile-sub">Create accounts, view passwords and access, deactivate</span>
-          </button>
           <button class="admin-tile" onclick="adminOpenBox('Gd')">
             <span class="admin-tile-icon">&#9635;</span>
             <span class="admin-tile-title">Goods Disposal</span>
             <span class="admin-tile-sub">Categories, masterlist lookup, delete pending / reverted</span>
+          </button>
+          <button class="admin-tile" onclick="adminOpenBox('Accounts')">
+            <span class="admin-tile-icon">&#9823;</span>
+            <span class="admin-tile-title">Accounts</span>
+            <span class="admin-tile-sub">Create accounts, view passwords and access, deactivate</span>
           </button>
         </div>
       </div>
@@ -594,14 +598,13 @@
       <button class="btn ghost admin-back" onclick="adminCloseBox()">&larr; Admin menu</button>
       <div class="card">
         <h2><span class="step-badge">&#43;</span> Account Entry</h2>
-        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Creates an account with the default password: outlet name + 1234, for example SHBN1234. The user can change it after logging in.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Creates an account with the default password: outlet name + 1234, for example SHBN1234. The user can change it after logging in. For an Outlet account, the Login ID must contain the outlet code or name (for example 1008-SHBN or 1015-SHPL-2); that sets the outlet.</p>
         <label>Login ID</label>
         <input type="text" id="accLoginId" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="New Login ID">
         <label>Category</label>
-        <select id="accCategory" onchange="accCategoryChanged()">
+        <select id="accCategory">
           <option value="Outlet">Outlet</option><option value="Head Office">Head Office</option><option value="Management">Management</option>
         </select>
-        <div id="accOutletWrap"><label>Outlet</label><select id="accPlant"></select></div>
         <div class="docs-search-actions"><button class="btn" onclick="accCreate()">Create</button></div>
         <div id="accCreateStatus"></div>
       </div>
@@ -706,6 +709,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=14"></script>
+<script src="js/app.js?v=15"></script>
 </body>
 </html>

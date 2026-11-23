@@ -1043,6 +1043,7 @@
     if(tab === 'docs') docsLoadRecent();
     if(tab === 'home'){
       refreshHomeDashboard();
+      if(can('admin')) loadMasterLog();
       if(can('records')){
         loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
         gdLoadPending({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
@@ -5869,18 +5870,11 @@
   }
 
   // ----- Accounts (Management only) -----
-  function accInitForm(){
-    var p = document.getElementById('accPlant');
-    if(!p.options.length) p.innerHTML = OUTLET_OPTIONS.map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
-    accCategoryChanged();
-  }
-  function accCategoryChanged(){
-    document.getElementById('accOutletWrap').style.display = document.getElementById('accCategory').value === 'Outlet' ? 'block' : 'none';
-  }
+  function accInitForm(){ document.getElementById('accCreateStatus').innerHTML = ''; }
   function accCreate(){
     var id = document.getElementById('accLoginId').value.trim();
     var cat = document.getElementById('accCategory').value;
-    var plant = cat === 'Outlet' ? document.getElementById('accPlant').value : null;
+    var plant = null;   // the server reads the outlet from the Login ID
     var st = document.getElementById('accCreateStatus');
     if(!id){ st.innerHTML = '<div class="status err">Enter a Login ID.</div>'; return; }
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Creating...</div>';
@@ -5968,6 +5962,31 @@
     }).catch(function(err){
       el.innerHTML = '<div class="status err">Could not load recent activity: ' + escapeHtml(err.message) + '</div>';
     });
+  }
+
+  // ---------- Dashboard: Masterlist Update Log (Management only) ----------
+  // Latest 6 masterlist additions across every outlet, newest first.
+  function loadMasterLog(){
+    var el = document.getElementById('homeMasterLog');
+    if(!el || !can('admin')) return;
+    var since = '2000-01-01';
+    Promise.all([
+      sb.from('masterlist').select('plu_code, description, category, uom, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(6),
+      sb.from('goods_masterlist').select('ean, material, description, sales_unit, department, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(6)
+    ]).then(function(res){
+      var err = res[0].error || res[1].error;
+      if(err) throw new Error(err.message);
+      var rows = [];
+      (res[0].data || []).forEach(function(x){ rows.push({ type: 'Fresh Market', code: x.plu_code, desc: x.description, at: x.created_at, plant: x.added_plant }); });
+      (res[1].data || []).forEach(function(x){ rows.push({ type: 'Goods', code: x.ean || x.material, desc: x.description, at: x.created_at, plant: x.added_plant }); });
+      rows.sort(function(a, b){ return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
+      rows = rows.slice(0, 6);
+      if(!rows.length){ el.innerHTML = '<div class="activity-empty">No masterlist updates yet.</div>'; return; }
+      el.innerHTML = rows.map(function(x){
+        return '<div class="activity-row"><span class="activity-dot"></span><div class="activity-main"><div class="activity-title">' + escapeHtml(x.desc || '-') + '</div>' +
+          '<div class="activity-meta">' + escapeHtml(x.type) + ' &middot; ' + escapeHtml(String(x.code || '-')) + ' &middot; Added at ' + escapeHtml(x.plant ? outletLabel(x.plant) : '-') + ' &middot; ' + escapeHtml(formatDateDisplay(x.at)) + '</div></div></div>';
+      }).join('');
+    }).catch(function(err){ el.innerHTML = '<div class="status err">' + escapeHtml(err.message) + '</div>'; });
   }
 
   // ---------- Masterlist duplicate check + save-button lock (shared) ----------
