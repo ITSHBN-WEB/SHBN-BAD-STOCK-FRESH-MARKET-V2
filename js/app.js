@@ -707,6 +707,8 @@
   }
   // Head Office and Management see every outlet in Documents and Summary Report.
   function allOutletsScope(){ return !!currentUser && currentUser.category !== 'Outlet'; }
+  // A record may hold several material documents ("4900,4901"): match a single number inside the list.
+  function docHasToken(value, tok){ return String(value || '').split(',').some(function(x){ return x.trim() === tok; }); }
   function plantQ(q, plant){ return plant ? q.eq('plant', plant) : q; }
 
   function rpcCall(name, args){
@@ -2275,11 +2277,13 @@
     var tbls = ['bad_stock_fresh_market', 'bad_stock_goods'];
     Promise.all(tbls.map(function(t){
       return Promise.all(['material_document', 'ref_no'].map(function(col){
-        return sb.from(t).select('*').eq(col, doc).in('status', ['keyed_in', 'pending', 'reverted']).eq('plant', currentOutletPlant).order('id', { ascending: true });
+        var base = sb.from(t).select('*');
+        base = col === 'material_document' ? base.ilike(col, '%' + doc + '%') : base.eq(col, doc);
+        return base.in('status', ['keyed_in', 'pending', 'reverted']).eq('plant', currentOutletPlant).order('id', { ascending: true });
       })).then(function(two){
         two.forEach(function(r){ if(r.error) throw new Error(r.error.message); });
         var seen = {}, all = [];
-        two[0].data.concat(two[1].data).forEach(function(row){ if(!seen[row.id]){ seen[row.id] = 1; all.push(row); } });
+        two[0].data.filter(function(row){ return docHasToken(row.material_document, doc); }).concat(two[1].data).forEach(function(row){ if(!seen[row.id]){ seen[row.id] = 1; all.push(row); } });
         return { data: all, error: null };
       });
     })).then(function(rs){
@@ -2688,7 +2692,7 @@
         sapCopySectionHtml(key, draft) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
-        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="pending-material-doc" data-key="' + key + '" value="' + escapeHtml(draft.materialDocument) + '" placeholder="Enter material document number (numbers only)">' +
+        '<input type="text" inputmode="numeric" autocomplete="off" class="pending-material-doc" data-key="' + key + '" value="' + escapeHtml(draft.materialDocument) + '" placeholder="Enter material document number (numbers only)">' +
         '<label>Key In By</label>' +
         '<input type="text" class="pending-key-in-by" data-key="' + key + '" value="' + escapeHtml(draft.keyInBy) + '" placeholder="Enter your name">' +
         '<button class="btn btn-full" onclick="submitPendingBatch(\'' + key + '\')">Submit</button>' +
@@ -2723,7 +2727,7 @@
     // wire up material document / key in by fields
     container.querySelectorAll('.pending-material-doc').forEach(function(input){
       input.addEventListener('input', function(){
-        var digits = input.value.replace(/\D/g, ''); // numbers only (also cleans pasted text)
+        var digits = input.value.replace(/[^\d,]/g, ''); // numbers and commas only (also cleans pasted text)
         if(digits !== input.value) input.value = digits;
         pendingDraft[input.dataset.key].materialDocument = digits;
       });
@@ -3037,17 +3041,22 @@
   // Resolves with a description of another batch already using this
   // Material Document number, or null if it is unused.
   function findDuplicateMaterialDocument(doc, ownTxnId){
-    return sb.from('bad_stock_fresh_market')
-      .select('batch_id, category, staff, entry_date, plant')
-      .eq('material_document', doc)
-      .neq('batch_id', ownTxnId)
-      .limit(1)
-      .then(function(res){
-        if(res.error) throw new Error(res.error.message);
-        if(!res.data.length) return null;
-        var r = res.data[0];
-        return (r.category || '-') + ', ' + (r.staff || '-') + ', ' + formatDateDisplay(r.entry_date) + ' (' + r.plant + ')';
-      });
+    var toks = String(doc).split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    return Promise.all(toks.map(function(tok){
+      return sb.from('bad_stock_fresh_market')
+        .select('batch_id, category, staff, entry_date, plant, material_document')
+        .ilike('material_document', '%' + tok + '%')
+        .neq('batch_id', ownTxnId)
+        .limit(25)
+        .then(function(res){
+          if(res.error) throw new Error(res.error.message);
+          return res.data.filter(function(r){ return docHasToken(r.material_document, tok); })[0] || null;
+        });
+    })).then(function(found){
+      var r = found.filter(Boolean)[0];
+      if(!r) return null;
+      return (r.category || '-') + ', ' + (r.staff || '-') + ', ' + formatDateDisplay(r.entry_date) + ' (' + r.plant + ')';
+    });
   }
 
   function submitPendingBatch(key){
@@ -3066,7 +3075,7 @@
       focusField('pending-material-doc');
       return;
     }
-    if(!/^\d+$/.test(draft.materialDocument.trim())){
+    if(!/^\d+(,\d+)*$/.test(draft.materialDocument.trim())){
       statusEl.innerHTML = '<div class="status err">Material Document must be numbers only.</div>';
       focusField('pending-material-doc');
       return;
@@ -4877,7 +4886,7 @@
         gdSapSectionHtml(key, d) +
         '<hr class="divider">' +
         '<label>Material Document</label>' +
-        '<input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" class="gd-matdoc' + (gdUomLocked(d) ? ' locked-input' : '') + '" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number (numbers only)"' + (gdUomLocked(d) ? ' disabled' : '') + '>' +
+        '<input type="text" inputmode="numeric" autocomplete="off" class="gd-matdoc' + (gdUomLocked(d) ? ' locked-input' : '') + '" data-key="' + key + '" value="' + escapeHtml(d.materialDocument) + '" placeholder="Enter material document number (numbers only)"' + (gdUomLocked(d) ? ' disabled' : '') + '>' +
         '<label>Key In By</label>' +
         '<input type="text" class="gd-keyinby' + (gdUomLocked(d) ? ' locked-input' : '') + '" data-key="' + key + '" value="' + escapeHtml(d.keyInBy) + '" placeholder="Enter your name"' + (gdUomLocked(d) ? ' disabled' : '') + '>' +
         '<button class="btn btn-full"' + (gdUomLocked(d) ? ' disabled' : '') + ' onclick="gdSubmitBatch(\'' + key + '\')">Submit</button>' +
@@ -4902,7 +4911,7 @@
     });
     container.querySelectorAll('.gd-matdoc').forEach(function(input){
       input.addEventListener('input', function(){
-        var digits = input.value.replace(/\D/g, ''); // numbers only (also cleans pasted text)
+        var digits = input.value.replace(/[^\d,]/g, ''); // numbers and commas only (also cleans pasted text)
         if(digits !== input.value) input.value = digits;
         gdDraft[input.dataset.key].materialDocument = digits;
       });
@@ -5096,7 +5105,7 @@
     if(!d || !batch) return;
     var focus = function(cls){ var f = document.querySelector('.' + cls + '[data-key="' + key + '"]'); if(f) f.focus(); };
     if(!d.materialDocument || !d.materialDocument.trim()){ st.innerHTML = gdErrHtml('Material Document is required.'); focus('gd-matdoc'); return; }
-    if(!/^\d+$/.test(d.materialDocument.trim())){ st.innerHTML = gdErrHtml('Material Document must be numbers only.'); focus('gd-matdoc'); return; }
+    if(!/^\d+(,\d+)*$/.test(d.materialDocument.trim())){ st.innerHTML = gdErrHtml('Material Document must be numbers only.'); focus('gd-matdoc'); return; }
     if(!d.keyInBy || !d.keyInBy.trim()){ st.innerHTML = gdErrHtml('Key In By is required.'); focus('gd-keyinby'); return; }
     if(/^[\d\s]+$/.test(d.keyInBy.trim())){ st.innerHTML = gdErrHtml('Key In By should be your name, not a number. Please check you did not swap it with the Material Document.'); focus('gd-keyinby'); return; }
     var doc = d.materialDocument.trim(), by = d.keyInBy.trim();
@@ -5610,7 +5619,7 @@
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
     var states = ['pending', 'keyed_in', 'reverted'];
     Promise.all([
-      docsQuery(function(t){ return plantQ(t.eq('material_document', q), docsPlant()).in('status', states); }),
+      docsQuery(function(t){ return plantQ(t.ilike('material_document', '%' + q + '%'), docsPlant()).in('status', states); }).then(function(l){ return l.filter(function(b){ return docHasToken(b.doc, q); }); }),
       docsQuery(function(t){ return plantQ(t.eq('ref_no', q), docsPlant()).in('status', states); })
     ]).then(function(rs){
       var seen = {}, list = [];
