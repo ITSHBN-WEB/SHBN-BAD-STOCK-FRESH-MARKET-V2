@@ -746,7 +746,19 @@
     }).then(function(){ btn.disabled = false; });
   }
 
+  // Outlets are created with accounts, so merge the live list into the built-in three.
+  function addOutlet(plant, name){
+    if(!plant || !name) return;
+    if(OUTLET_OPTIONS.some(function(o){ return o.plant === plant; })) return;
+    OUTLET_OPTIONS.push({ plant: plant, label: plant + '-' + name, shortName: name });
+  }
   function enterApp(d){
+    addOutlet(d.plant, d.outlet_name);
+    rpcCall('drs_outlets', { p_token: d.token }).then(function(list){
+      (list || []).forEach(function(o){ addOutlet(o.plant, o.name); });
+    }).catch(function(){}).then(function(){ enterAppNow(d); });
+  }
+  function enterAppNow(d){
     currentUser = { id: d.id, loginId: d.login_id, category: d.category, plant: d.plant, token: d.token };
     if(d.category === 'Outlet' && d.plant) currentOutletPlant = d.plant;          // fixed by the account
     else if(d.category === 'Management') currentOutletPlant = getCurrentOutlet();  // Management picks in Store Assignment
@@ -5895,7 +5907,7 @@
         accRows.map(function(a, i){
           var own = currentUser && a.id === currentUser.id;
           return '<tr><td><b>' + escapeHtml(a.login_id) + '</b></td><td class="pw">' + escapeHtml(a.password) + '</td><td>' + escapeHtml(a.category) + '</td>' +
-            '<td class="acc-access">' + (ACCESS_LABELS[a.category] || []).map(escapeHtml).join('<br>') + '</td>' +
+            '<td class="acc-access">' + (ACCESS_LABELS[a.category] || []).map(escapeHtml).join('<br>') + (a.category === 'Outlet' && a.plant ? '<br>Outlet ' + escapeHtml(a.plant + '-' + (a.outlet_name || '')) : '') + '</td>' +
             '<td style="white-space:nowrap;">' + (own ? '<span class="pending-meta">You</span>' : '<button class="btn ghost" onclick="accReset(' + i + ')">Reset password</button> <button class="btn danger" onclick="accDeactivate(' + i + ')">Deactivate</button>') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }).catch(function(err){ box.innerHTML = '<div class="status err">' + escapeHtml(err.message) + '</div>'; });

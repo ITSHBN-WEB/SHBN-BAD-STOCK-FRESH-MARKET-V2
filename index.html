@@ -598,12 +598,12 @@
       <button class="btn ghost admin-back" onclick="adminCloseBox()">&larr; Admin menu</button>
       <div class="card">
         <h2><span class="step-badge">&#43;</span> Account Entry</h2>
-        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Creates an account with the default password: outlet name + 1234, for example SHBN1234. The user can change it after logging in. For an Outlet account, the Login ID must contain the outlet code or name (for example 1008-SHBN or 1015-SHPL-2); that sets the outlet.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Creates an account with the default password: outlet name + 1234, for example SHBN1234. The user can change it after logging in. Access level decides what the account can use. An Outlet account is a separate outlet with its own records: its Login ID is the 4-digit outlet code, a dash and the outlet name, for example 1001-SHP (default password SHP1234).</p>
         <label>Login ID</label>
-        <input type="text" id="accLoginId" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="New Login ID">
-        <label>Category</label>
+        <input type="text" id="accLoginId" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="New Login ID, e.g. 1001-SHP">
+        <label>Access level</label>
         <select id="accCategory">
-          <option value="Outlet">Outlet</option><option value="Head Office">Head Office</option><option value="Management">Management</option>
+          <option value="Outlet">Outlet (New Disposal, Disposal Records, Documents, Masterlist Update, Summary Report)</option><option value="Head Office">Head Office (Documents and Summary Report, all outlets)</option><option value="Management">Management (all access)</option>
         </select>
         <div class="docs-search-actions"><button class="btn" onclick="accCreate()">Create</button></div>
         <div id="accCreateStatus"></div>
@@ -709,6 +709,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=15"></script>
+<script src="js/app.js?v=16"></script>
 </body>
 </html>

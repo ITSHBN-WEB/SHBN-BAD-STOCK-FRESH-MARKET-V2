@@ -55,7 +55,7 @@ declare
   v_ym  text := to_char(now() at time zone 'Asia/Kuala_Lumpur', 'MMYY');
   v_seq int;
 begin
-  if p_plant not in ('1008', '1015', '1007') then
+  if p_plant !~ '^[0-9]{4}$' then
     raise exception 'Unknown outlet %', p_plant;
   end if;
   if p_disposal not in ('01', '02') then
