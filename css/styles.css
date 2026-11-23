@@ -514,3 +514,5 @@
 
 #pwOverlay{position:fixed;inset:0;z-index:9998;background:rgba(30,20,20,.55);display:none;align-items:center;justify-content:center;padding:16px}
 #pwOverlay .card{width:100%;max-width:400px;margin:0}
+
+.dashboard-row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start;margin-top:18px}

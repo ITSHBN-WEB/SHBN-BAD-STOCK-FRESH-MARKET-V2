@@ -36,6 +36,7 @@ alter table drs_sessions enable row level security;
 revoke all on drs_accounts, drs_sessions from anon, authenticated;
 
 -- ---------- helpers ----------
+drop function if exists drs_gen_password(text, text);
 create or replace function drs_gen_password(p_category text, p_name text) returns text
 language sql immutable as $$
   select case p_category when 'Head Office' then 'HO' when 'Management' then 'MG' else upper(coalesce(p_name, '')) end || '1234'

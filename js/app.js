@@ -5977,14 +5977,14 @@
   }
 
   // ---------- Dashboard: Masterlist Update Log (Management only) ----------
-  // Latest 6 masterlist additions across every outlet, newest first.
+  // Latest 5 masterlist additions across every outlet, newest first.
   function loadMasterLog(){
     var el = document.getElementById('homeMasterLog');
     if(!el || !can('admin')) return;
     var since = '2000-01-01';
     Promise.all([
-      sb.from('masterlist').select('plu_code, description, category, uom, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(6),
-      sb.from('goods_masterlist').select('ean, material, description, sales_unit, department, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(6)
+      sb.from('masterlist').select('plu_code, description, category, uom, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(5),
+      sb.from('goods_masterlist').select('ean, material, description, sales_unit, department, created_at, added_plant').gte('created_at', since).order('created_at', { ascending: false }).limit(5)
     ]).then(function(res){
       var err = res[0].error || res[1].error;
       if(err) throw new Error(err.message);
@@ -5992,7 +5992,7 @@
       (res[0].data || []).forEach(function(x){ rows.push({ type: 'Fresh Market', code: x.plu_code, desc: x.description, at: x.created_at, plant: x.added_plant }); });
       (res[1].data || []).forEach(function(x){ rows.push({ type: 'Goods', code: x.ean || x.material, desc: x.description, at: x.created_at, plant: x.added_plant }); });
       rows.sort(function(a, b){ return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
-      rows = rows.slice(0, 6);
+      rows = rows.slice(0, 5);
       if(!rows.length){ el.innerHTML = '<div class="activity-empty">No masterlist updates yet.</div>'; return; }
       el.innerHTML = rows.map(function(x){
         return '<div class="activity-row"><span class="activity-dot"></span><div class="activity-main"><div class="activity-title">' + escapeHtml(x.desc || '-') + '</div>' +
