@@ -3836,38 +3836,51 @@
   // admin had just typed, so Save Changes would re-save the unedited data.
   var masterlistEditValues = null;
 
+  // Wildcard search: "*" = any text. Without a "*" the text is matched anywhere inside the name.
+  function wildPattern(raw){
+    var t = String(raw).trim().replace(/\\/g, '').replace(/%/g, '\\%').replace(/_/g, '\\_');
+    return t.indexOf('*') >= 0 ? t.replace(/\*+/g, '%') : '%' + t + '%';
+  }
+  var MASTER_LIST_MAX = 50;
+  var masterlistFound = [];
+  function masterlistSearchClear(){
+    document.getElementById('masterlistSearchInput').value = '';
+    ['masterlistSearchStatus', 'masterlistSearchList', 'masterlistSearchResult'].forEach(function(id){ document.getElementById(id).innerHTML = ''; });
+    masterlistSearchResult = null; masterlistFound = [];
+  }
   function searchMasterlistItem(){
-    var plu = document.getElementById('masterlistSearchInput').value.trim();
+    var raw = document.getElementById('masterlistSearchInput').value.trim();
     var statusEl = document.getElementById('masterlistSearchStatus');
+    var listEl = document.getElementById('masterlistSearchList');
     var resultEl = document.getElementById('masterlistSearchResult');
-
-    if(!plu){
-      statusEl.innerHTML = '<div class="status err">Enter a PLU code to search.</div>';
-      resultEl.innerHTML = '';
-      masterlistSearchResult = null;
-      return;
-    }
-
+    listEl.innerHTML = ''; resultEl.innerHTML = ''; masterlistSearchResult = null; masterlistFound = [];
+    if(!raw){ statusEl.innerHTML = '<div class="status err">Enter a PLU code or an item name.</div>'; return; }
     statusEl.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
-    resultEl.innerHTML = '';
-    masterlistEditMode = false;
-    masterlistConfirmMode = false;
-
-    sb.from('masterlist').select('*').eq('plu_code', plu)
-      .then(function(res){
-        if(res.error) throw new Error(res.error.message);
-        if(!res.data.length){
-          statusEl.innerHTML = '<div class="status err">No masterlist item found for PLU "' + escapeHtml(plu) + '".</div>';
-          masterlistSearchResult = null;
-          return;
-        }
-        statusEl.innerHTML = '';
-        masterlistSearchResult = res.data[0];
-        renderMasterlistSearchResult();
-      })
-      .catch(function(err){
-        statusEl.innerHTML = '<div class="status err">Error: ' + err.message + '</div>';
-      });
+    masterlistEditMode = false; masterlistConfirmMode = false;
+    var pat = wildPattern(raw), hasWild = raw.indexOf('*') >= 0;
+    var byName = sb.from('masterlist').select('*').ilike('description', pat).order('description').limit(MASTER_LIST_MAX);
+    var byCode = hasWild ? sb.from('masterlist').select('*').ilike('plu_code', pat).order('plu_code').limit(MASTER_LIST_MAX)
+                         : sb.from('masterlist').select('*').eq('plu_code', raw).limit(MASTER_LIST_MAX);
+    Promise.all([byCode, byName]).then(function(rs){
+      var err = rs[0].error || rs[1].error; if(err) throw new Error(err.message);
+      var seen = {}, rows = [];
+      rs[0].data.concat(rs[1].data).forEach(function(x){ var k = x.id != null ? 'i' + x.id : x.plu_code + '|' + x.material; if(!seen[k]){ seen[k] = 1; rows.push(x); } });
+      masterlistFound = rows.slice(0, MASTER_LIST_MAX);
+      if(!rows.length){ statusEl.innerHTML = '<div class="status err">No masterlist item found for "' + escapeHtml(raw) + '".</div>'; return; }
+      statusEl.innerHTML = '<div class="status ok">' + rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' found' + (rows.length >= MASTER_LIST_MAX ? ' (showing the first ' + MASTER_LIST_MAX + ', narrow the search to see others)' : '') + '. Select one to edit.</div>';
+      listEl.innerHTML = masterlistFound.map(function(x, i){
+        return '<div class="card"><div class="ml-pick"><div><div class="cart-desc">' + escapeHtml(x.description || '') + '</div>' +
+          '<div class="cart-sub">PLU ' + escapeHtml(String(x.plu_code)) + ' &middot; Material ' + escapeHtml(x.material || '-') + ' &middot; ' + escapeHtml(x.category || '-') + ' &middot; UOM ' + escapeHtml(x.uom || '-') + '</div></div>' +
+          '<button class="btn ghost" onclick="masterlistPick(' + i + ')">Select</button></div></div>';
+      }).join('');
+    }).catch(function(err){ statusEl.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>'; });
+  }
+  function masterlistPick(i){
+    var x = masterlistFound[i]; if(!x) return;
+    masterlistSearchResult = x; masterlistEditMode = false; masterlistConfirmMode = false;
+    document.getElementById('masterlistSearchList').innerHTML = '<button class="btn ghost" style="margin-bottom:12px;" onclick="searchMasterlistItem()">&larr; Back to results</button>';
+    renderMasterlistSearchResult();
+    document.getElementById('masterlistSearchResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function renderMasterlistSearchResult(){
@@ -5380,22 +5393,40 @@
   }
 
   var gdAdmFound = [];
+  function gdAdminSearchClear(){
+    document.getElementById('gdAdmSearchInput').value = '';
+    document.getElementById('gdAdmSearchStatus').innerHTML = '';
+    document.getElementById('gdAdmSearchResult').innerHTML = '';
+    gdAdmFound = [];
+  }
   function gdAdminSearch(){
-    var code = document.getElementById('gdAdmSearchInput').value.trim();
+    var raw = document.getElementById('gdAdmSearchInput').value.trim();
     var st = document.getElementById('gdAdmSearchStatus');
     var out = document.getElementById('gdAdmSearchResult');
     out.innerHTML = '';
-    if(!code){ st.innerHTML = gdErrHtml('Enter a barcode or material.'); return; }
+    if(!raw){ st.innerHTML = gdErrHtml('Enter a barcode, material or item name.'); return; }
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
-    gdLookup(code).then(function(rows){
-      gdAdmFound = rows;
-      if(!rows.length){ st.innerHTML = gdErrHtml('Not found in the Goods masterlist.'); return; }
-      st.innerHTML = '';
-      out.innerHTML = rows.map(function(r, i){
+    var pat = wildPattern(raw), hasWild = raw.indexOf('*') >= 0, T = 'goods_masterlist';
+    var q = [ sb.from(T).select('*').ilike('description', pat).order('description').limit(MASTER_LIST_MAX) ];
+    if(hasWild){
+      q.push(sb.from(T).select('*').ilike('ean', pat).limit(MASTER_LIST_MAX));
+      q.push(sb.from(T).select('*').ilike('material', pat).limit(MASTER_LIST_MAX));
+    } else {
+      q.push(sb.from(T).select('*').eq('ean', raw).limit(MASTER_LIST_MAX));
+      q.push(sb.from(T).select('*').eq('material', raw).limit(MASTER_LIST_MAX));
+    }
+    Promise.all(q).then(function(rs){
+      var err = rs[0].error || rs[1].error || rs[2].error; if(err) throw new Error(err.message);
+      var seen = {}, rows = [];
+      rs[1].data.concat(rs[2].data, rs[0].data).forEach(function(x){ var k = x.id != null ? 'i' + x.id : x.material + '|' + x.ean + '|' + x.sales_unit; if(!seen[k]){ seen[k] = 1; rows.push(x); } });
+      gdAdmFound = rows.slice(0, MASTER_LIST_MAX);
+      if(!rows.length){ st.innerHTML = gdErrHtml('No Goods masterlist item found for "' + raw + '".'); return; }
+      st.innerHTML = '<div class="status ok">' + rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' found' + (rows.length >= MASTER_LIST_MAX ? ' (showing the first ' + MASTER_LIST_MAX + ', narrow the search to see others)' : '') + '. Select one to edit.</div>';
+      out.innerHTML = gdAdmFound.map(function(r, i){
         return '<div class="card"><div class="cart-desc">' + escapeHtml(r.description || '') + '</div>' +
           '<div class="cart-sub">Material ' + escapeHtml(r.material) + ' &middot; ' + escapeHtml(r.ean || '-') + ' &middot; ' + escapeHtml(r.sales_unit || '-') +
           ' &middot; numerator ' + (r.numerator == null ? '-' : escapeHtml(String(r.numerator))) + ' &middot; ' + escapeHtml(r.department || '-') + '</div>' +
-          '<button class="btn ghost btn-full" onclick="gdAdminLoadIntoForm(' + i + ')">Edit in Masterlist Update</button></div>';
+          '<button class="btn ghost btn-full" onclick="gdAdminLoadIntoForm(' + i + ')">Select and edit</button></div>';
       }).join('');
     }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
   }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DRS — Disposal Record System</title>
-  <link rel="stylesheet" href="css/styles.css?v=11">
+  <link rel="stylesheet" href="css/styles.css?v=12">
 </head>
 <body>
 <div id="firstOutletOverlay">
@@ -647,11 +647,13 @@
 
       <div class="card">
         <h2><span class="step-badge">&#128269;</span> Edit Existing Masterlist Item</h2>
-        <label>PLU Code</label>
-        <input type="text" id="masterlistSearchInput" placeholder="Enter PLU code to search" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMasterlistItem();}">
-        <button class="btn btn-full" onclick="searchMasterlistItem()">Search</button>
+        <label>PLU Code or Item Name</label>
+        <input type="text" id="masterlistSearchInput" autocomplete="off" placeholder="PLU code or name, e.g. *apple*150*" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMasterlistItem();}">
+        <p class="wild-hint">Wildcard: <b>*</b> stands for any text, for example <b>*apple*150*</b>. Without a <b>*</b>, the name is matched anywhere inside it.</p>
+        <div class="docs-search-actions"><button class="btn" onclick="searchMasterlistItem()">Search</button><button class="btn ghost" onclick="masterlistSearchClear()">Clear</button></div>
         <div id="masterlistSearchStatus"></div>
       </div>
+      <div id="masterlistSearchList"></div>
       <div id="masterlistSearchResult"></div>
 
       <div class="card">
@@ -687,10 +689,11 @@
       </div>
 
       <div class="card">
-        <h2><span class="step-badge">&#128269;</span> Find Goods Masterlist Item</h2>
-        <label>Barcode or Material</label>
-        <input type="text" id="gdAdmSearchInput" placeholder="Enter barcode or material" onkeydown="if(event.key==='Enter'){event.preventDefault();gdAdminSearch();}">
-        <button class="btn btn-full" onclick="gdAdminSearch()">Search</button>
+        <h2><span class="step-badge">&#128269;</span> Edit Existing Goods Masterlist Item</h2>
+        <label>Barcode, Material or Item Name</label>
+        <input type="text" id="gdAdmSearchInput" autocomplete="off" placeholder="Barcode, material or name, e.g. *apple*150*" onkeydown="if(event.key==='Enter'){event.preventDefault();gdAdminSearch();}">
+        <p class="wild-hint">Wildcard: <b>*</b> stands for any text, for example <b>*apple*150*</b>. Without a <b>*</b>, the name is matched anywhere inside it.</p>
+        <div class="docs-search-actions"><button class="btn" onclick="gdAdminSearch()">Search</button><button class="btn ghost" onclick="gdAdminSearchClear()">Clear</button></div>
         <div id="gdAdmSearchStatus"></div>
       </div>
       <div id="gdAdmSearchResult"></div>
@@ -711,6 +714,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=17"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>
