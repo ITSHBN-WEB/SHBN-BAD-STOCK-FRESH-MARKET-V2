@@ -4,19 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DRS — Disposal Record System</title>
-  <link rel="stylesheet" href="css/styles.css?v=8">
+  <link rel="stylesheet" href="css/styles.css?v=10">
 </head>
 <body>
 <div id="firstOutletOverlay">
   <div class="card">
-    <h2 style="margin-top:0;">Choose outlet</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">This device has not been assigned to an outlet yet. Select the outlet this device belongs to and enter its password. This is only asked once per device.</p>
-    <label>Outlet</label>
-    <select id="firstOutletSelect"></select>
-    <label style="margin-top:12px;">Outlet password</label>
-    <input type="password" id="firstOutletPassword" autocomplete="off" placeholder="Password for this outlet" onkeydown="if(event.key==='Enter') confirmFirstOutlet();">
-    <button class="btn btn-full" onclick="confirmFirstOutlet()">Continue</button>
-    <div id="firstOutletStatus"></div>
+    <h2 style="margin-top:0;">DRS Login</h2>
+    <p id="loginNotice" style="font-size:13px;color:var(--muted);margin:0 0 14px;">Enter your Login ID and password.</p>
+    <label>Login ID</label>
+    <input type="text" id="loginIdInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Login ID" onkeydown="if(event.key==='Enter') document.getElementById('loginPwInput').focus();">
+    <label style="margin-top:12px;">Password</label>
+    <input type="password" id="loginPwInput" autocomplete="off" placeholder="Password" onkeydown="if(event.key==='Enter') doLogin();">
+    <button class="btn btn-full" id="loginBtn" onclick="doLogin()">Log in</button>
+    <div id="loginStatus"></div>
+  </div>
+</div>
+<div id="pwOverlay">
+  <div class="card">
+    <h2 style="margin-top:0;">Change Password</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px;">Your Login ID stays the same. The new password needs at least 6 characters and no spaces.</p>
+    <label>Current password</label>
+    <input type="password" id="pwOld" autocomplete="off">
+    <label style="margin-top:10px;">New password</label>
+    <input type="password" id="pwNew" autocomplete="off">
+    <label style="margin-top:10px;">Confirm new password</label>
+    <input type="password" id="pwNew2" autocomplete="off" onkeydown="if(event.key==='Enter') pwSave();">
+    <div class="docs-search-actions"><button class="btn" id="pwSaveBtn" onclick="pwSave()">Save</button><button class="btn ghost" onclick="pwClose()">Cancel</button></div>
+    <div id="pwStatus"></div>
   </div>
 </div>
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
@@ -40,17 +54,17 @@
   <div class="sidebar-section">WORKSPACE</div>
   <nav class="sidebar-nav">
     <button class="sidebar-link active" id="sideBtnHome" onclick="showTab('home')" title="Home"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Home</span></button>
-    <button class="sidebar-link sidebar-group-open" id="sideBtnNewGroup" onclick="toggleNewMenu()" title="New Disposal"><span class="sidebar-icon">＋</span><span class="sidebar-label">New Disposal</span><span class="sidebar-chev" id="newMenuChev">⌃</span></button>
-    <div class="sidebar-sub" id="newSubMenu">
+    <button class="sidebar-link sidebar-group-open" id="sideBtnNewGroup" data-access="new" onclick="toggleNewMenu()" title="New Disposal"><span class="sidebar-icon">＋</span><span class="sidebar-label">New Disposal</span><span class="sidebar-chev" id="newMenuChev">⌃</span></button>
+    <div class="sidebar-sub" id="newSubMenu" data-access="new">
       <button class="sidebar-link sub" id="sideBtnNew" onclick="showTab('new')" title="Fresh Market"><span class="sidebar-icon">❦</span><span class="sidebar-label">Fresh Market</span></button>
       <button class="sidebar-link sub" id="sideBtnGnew" onclick="showTab('gnew')" title="Goods"><span class="sidebar-icon">▣</span><span class="sidebar-label">Goods</span></button>
     </div>
-    <button class="sidebar-link" id="sideBtnIt" onclick="openRecords()" title="Disposal Records"><span class="sidebar-icon">▤</span><span class="sidebar-label">Disposal Records</span></button>
-    <button class="sidebar-link" id="sideBtnDocs" onclick="showTab('docs')" title="Documents"><span class="sidebar-icon">❐</span><span class="sidebar-label">Documents</span></button>
-    <button class="sidebar-link" id="sideBtnMaster" onclick="showTab('master')" title="Masterlist Update"><span class="sidebar-icon">☰</span><span class="sidebar-label">Masterlist Update</span></button>
-    <button class="sidebar-link" id="sideBtnStore" onclick="showTab('store')" title="Store Assignment"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Store Assignment</span></button>
-    <button class="sidebar-link" id="sideBtnSum" onclick="showTab('sum')" title="Summary Report"><span class="sidebar-icon">&#9783;</span><span class="sidebar-label">Summary Report</span></button>
-    <button class="sidebar-link" id="sideBtnAdmin" onclick="showTab('admin')" title="Admin"><span class="sidebar-icon">⚙</span><span class="sidebar-label">Admin</span></button>
+    <button class="sidebar-link" id="sideBtnIt" data-access="records" onclick="openRecords()" title="Disposal Records"><span class="sidebar-icon">▤</span><span class="sidebar-label">Disposal Records</span></button>
+    <button class="sidebar-link" id="sideBtnDocs" data-access="docs" onclick="showTab('docs')" title="Documents"><span class="sidebar-icon">❐</span><span class="sidebar-label">Documents</span></button>
+    <button class="sidebar-link" id="sideBtnMaster" data-access="master" onclick="showTab('master')" title="Masterlist Update"><span class="sidebar-icon">☰</span><span class="sidebar-label">Masterlist Update</span></button>
+    <button class="sidebar-link" id="sideBtnStore" data-access="store" onclick="showTab('store')" title="Store Assignment"><span class="sidebar-icon">⌂</span><span class="sidebar-label">Store Assignment</span></button>
+    <button class="sidebar-link" id="sideBtnSum" data-access="sum" onclick="showTab('sum')" title="Summary Report"><span class="sidebar-icon">&#9783;</span><span class="sidebar-label">Summary Report</span></button>
+    <button class="sidebar-link" id="sideBtnAdmin" data-access="admin" onclick="showTab('admin')" title="Admin"><span class="sidebar-icon">⚙</span><span class="sidebar-label">Admin</span></button>
     <button class="sidebar-link sidebar-pin" id="sidebarPinBtn" onclick="toggleSidebarPin()" aria-pressed="false" title="Pin sidebar open"><span class="sidebar-icon">📌</span><span class="sidebar-label" id="sidebarPinLabel">Pin sidebar open</span></button>
   </nav>
   <div class="sidebar-spacer"></div>
@@ -76,15 +90,17 @@
         <span><span class="sync-dot"></span><span id="syncText">Starting...</span></span>
         <button class="sync-btn" id="forceRefreshBtn" onclick="forceRefreshAll()" title="Reload all data now">&#8635; Force refresh</button>
       </div>
-      <div class="outlet-pill" id="outletPill">&#9679; OUTLET: <span id="outletPillText">1008-SHBN</span></div>
+      <div class="outlet-pill" id="outletPill">&#9679; <span id="outletPillText">&nbsp;</span></div>
       <div class="user-wrap">
         <button class="user-btn" id="userBtn" onclick="toggleUserMenu(event)" aria-label="User menu">
           <span class="user-avatar"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8" r="4.2"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z"/></svg></span><span style="font-size:11px;">&#9662;</span>
         </button>
         <div class="user-menu" id="userMenu">
-          <div class="um-head" id="userMenuOutlet">Outlet</div>
+          <div class="um-head" id="userMenuOutlet">Account</div>
           <button onclick="toggleUserMenu();forceRefreshAll();">&#8635; Force refresh all data</button>
-          <button onclick="toggleUserMenu();showTab('admin');">&#9881; Admin</button>
+          <button data-access="admin" onclick="toggleUserMenu();showTab('admin');">&#9881; Admin</button>
+          <button onclick="toggleUserMenu();pwOpen();">&#128273; Change password</button>
+          <button onclick="toggleUserMenu();logoutNow();">&#10162; Log out</button>
         </div>
       </div>
     </div>
@@ -102,7 +118,7 @@
     </div>
 
     <div class="dashboard-stats">
-      <div class="stat-card fm" role="button" tabindex="0" onclick="openDashboardSection('it','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','pending');}">
+      <div class="stat-card fm" data-access="records" role="button" tabindex="0" onclick="openDashboardSection('it','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','pending');}">
         <div class="stat-head">
           <div class="stat-icon fm"><svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 15-14 0 10-5 15-13 15"/><path d="M5 19c3-5 6-8 10-10"/></svg></div>
           <div><div class="stat-title">Fresh Market Disposal</div><span class="stat-badge fm">Pending</span></div>
@@ -110,7 +126,7 @@
         <div class="stat-value" id="homeFmCount">&mdash;</div>
         <div class="stat-sub">Waiting for IT processing &nbsp;&middot;&nbsp; <b>View pending &rarr;</b></div>
       </div>
-      <div class="stat-card gd" role="button" tabindex="0" onclick="openDashboardSection('git','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('git','pending');}">
+      <div class="stat-card gd" data-access="records" role="button" tabindex="0" onclick="openDashboardSection('git','pending')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('git','pending');}">
         <div class="stat-head">
           <div class="stat-icon gd"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
           <div><div class="stat-title">Goods Disposal</div><span class="stat-badge gd">Pending</span></div>
@@ -118,7 +134,7 @@
         <div class="stat-value" id="homeGdCount">&mdash;</div>
         <div class="stat-sub">Waiting for IT processing &nbsp;&middot;&nbsp; <b>View pending &rarr;</b></div>
       </div>
-      <div class="stat-card pr" role="button" tabindex="0" onclick="openDashboardSection('it','problem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','problem');}">
+      <div class="stat-card pr" data-access="records" role="button" tabindex="0" onclick="openDashboardSection('it','problem')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardSection('it','problem');}">
         <div class="stat-head">
           <div class="stat-icon pr"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg></div>
           <div><div class="stat-title">PLU Problems</div></div>
@@ -129,19 +145,19 @@
     </div>
 
     <div class="dashboard-grid">
-      <button class="launch-card" type="button" onclick="showTab('new')" aria-label="New Fresh Market Disposal">
+      <button class="launch-card" data-access="new" type="button" onclick="showTab('new')" aria-label="New Fresh Market Disposal">
         <div class="launch-icon fm"><svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 15-14 0 10-5 15-13 15"/><path d="M5 19c3-5 6-8 10-10"/></svg></div>
         <strong>New Fresh Market Disposal</strong>
         <span class="copy">Record disposed fresh products and submit the disposal document.</span>
         <div class="launch-cta">Start fresh market entry <span>&rarr;</span></div>
       </button>
-      <button class="launch-card" type="button" onclick="showTab('gnew')" aria-label="New Goods Disposal">
+      <button class="launch-card" data-access="new" type="button" onclick="showTab('gnew')" aria-label="New Goods Disposal">
         <div class="launch-icon gd"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
         <strong>New Goods Disposal</strong>
         <span class="copy">Record disposed goods and manage the related disposal document.</span>
         <div class="launch-cta">Start goods entry <span>&rarr;</span></div>
       </button>
-      <div class="dashboard-panel">
+      <div class="dashboard-panel" data-access="records">
         <div class="dashboard-panel-head"><h2>&#9719; Recent Activity</h2><button class="dashboard-link" onclick="openRecords()">View disposal records</button></div>
         <div id="homeRecentActivity" class="activity-list"><div class="activity-empty">Loading recent activity&hellip;</div></div>
       </div>
@@ -422,7 +438,8 @@
   <div id="sumTabView" style="display:none;">
     <h2 class="page-heading">Summary Report</h2>
     <div class="card">
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Completed records only (Material Document keyed in), for the outlet you are logged in to. Items are ranked by total quantity, highest first.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Completed records only (Material Document keyed in), for your outlet (Head Office and Management can choose an outlet or all outlets). Items are ranked by total quantity, highest first.</p>
+      <div id="sumOutletWrap" style="display:none;"><label>Outlet</label><select id="sumOutlet" class="sum-outlet-select"></select></div>
       <div class="sum-dates">
         <div><label>From</label><input type="date" id="sumFrom"></div>
         <div><label>To</label><input type="date" id="sumTo"></div>
@@ -446,6 +463,7 @@
 
   <div id="docsTabView" style="display:none;">
     <h2 class="page-heading">Documents</h2>
+    <div class="card" id="docsOutletWrap" style="display:none;"><label style="margin-top:0;">Outlet</label><select id="docsOutlet" onchange="docsScopeChanged()"></select></div>
     <div id="docsDetail" style="display:none;"></div>
     <div id="docsMain">
     <div class="card">
@@ -475,10 +493,8 @@
         <h2><span class="step-badge">&#127970;</span> Outlet Settings</h2>
         <label>Current Outlet</label>
         <select id="adminOutletSelect"></select>
-        <label style="margin-top:12px;">Outlet password</label>
-        <input type="password" id="outletPasswordInput" autocomplete="off" placeholder="Password for the outlet you are switching to" onkeydown="if(event.key==='Enter') saveOutletSetting();">
         <button class="btn btn-full" onclick="saveOutletSetting()">Save Outlet</button>
-        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Sets which outlet's data this device shows across New Entry, Disposal Records (Fresh Market and Goods) and Documents. The masterlists stay shared between outlets.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Management only. Sets which outlet's data you work on across New Entry, Disposal Records (Fresh Market and Goods) and Documents. The masterlists stay shared between outlets.</p>
         <div id="outletSettingStatus"></div>
       </div>
 
@@ -561,12 +577,39 @@
             <span class="admin-tile-title">Fresh Market Disposal</span>
             <span class="admin-tile-sub">Categories, masterlist item edits, delete pending / reverted</span>
           </button>
+          <button class="admin-tile" onclick="adminOpenBox('Accounts')">
+            <span class="admin-tile-icon">&#9823;</span>
+            <span class="admin-tile-title">Accounts</span>
+            <span class="admin-tile-sub">Create accounts, view passwords and access, deactivate</span>
+          </button>
           <button class="admin-tile" onclick="adminOpenBox('Gd')">
             <span class="admin-tile-icon">&#9635;</span>
             <span class="admin-tile-title">Goods Disposal</span>
             <span class="admin-tile-sub">Categories, masterlist lookup, delete pending / reverted</span>
           </button>
         </div>
+      </div>
+
+      <div id="adminBoxAccounts" style="display:none;">
+      <button class="btn ghost admin-back" onclick="adminCloseBox()">&larr; Admin menu</button>
+      <div class="card">
+        <h2><span class="step-badge">&#43;</span> Account Entry</h2>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Creates an account with the default password: outlet name + 1234, for example SHBN1234. The user can change it after logging in.</p>
+        <label>Login ID</label>
+        <input type="text" id="accLoginId" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="New Login ID">
+        <label>Category</label>
+        <select id="accCategory" onchange="accCategoryChanged()">
+          <option value="Outlet">Outlet</option><option value="Head Office">Head Office</option><option value="Management">Management</option>
+        </select>
+        <div id="accOutletWrap"><label>Outlet</label><select id="accPlant"></select></div>
+        <div class="docs-search-actions"><button class="btn" onclick="accCreate()">Create</button></div>
+        <div id="accCreateStatus"></div>
+      </div>
+      <div class="card">
+        <h2><span class="step-badge">&#9776;</span> Active Accounts</h2>
+        <button class="btn ghost" style="margin-top:0;" onclick="accLoad()">Refresh List</button>
+        <div id="accList" style="margin-top:12px;"></div>
+      </div>
       </div>
 
       <div id="adminBoxUnpost" style="display:none;">
@@ -663,6 +706,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>

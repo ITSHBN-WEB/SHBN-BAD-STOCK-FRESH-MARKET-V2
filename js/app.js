@@ -678,45 +678,159 @@
   var selectedCompletedCategory = null;
 
   // ---------- Startup: load masterlist once, cache client-side ----------
-  var outletPending = false;
-  function hasStoredOutlet(){
-    try { return !!localStorage.getItem(OUTLET_STORAGE_KEY); } catch(e){ return false; }
+  // ================= LOGIN, ACCESS AND INACTIVITY TIMEOUT =================
+  // Accounts live in Supabase (drs_accounts). The browser only talks to the
+  // login / session / account functions (RPC); it can never read the table.
+  var outletPending = true;           // true until someone has logged in
+  var SESSION_KEY = 'drs_session_v2';
+  var IDLE_MS = 30 * 60 * 1000;       // 30 minutes of inactivity
+  var currentUser = null;             // { id, loginId, category, plant, token }
+  var lastActive = Date.now(), lastPersist = 0, lastPing = 0, idleTimer = null;
+
+  var ACCESS_BY_CAT = {
+    'Outlet': ['new', 'records', 'docs', 'master', 'sum'],
+    'Head Office': ['docs_ho', 'sum_ho'],
+    'Management': ['all']
+  };
+  var ACCESS_LABELS = {
+    'Outlet': ['New Disposal', 'Disposal Records', 'Documents', 'Masterlist Update', 'Summary Report'],
+    'Head Office': ['Documents - HO', 'Summary Report - HO'],
+    'Management': ['All Access']
+  };
+  var TAB_ACCESS = { 'new':'new', gnew:'new', it:'records', git:'records', rv:'records', docs:'docs', master:'master', store:'store', sum:'sum', admin:'admin' };
+
+  function can(key){
+    if(!currentUser) return false;
+    var a = ACCESS_BY_CAT[currentUser.category] || [];
+    if(a.indexOf('all') >= 0 || a.indexOf(key) >= 0) return true;
+    return (key === 'docs' && a.indexOf('docs_ho') >= 0) || (key === 'sum' && a.indexOf('sum_ho') >= 0);
   }
-  function confirmFirstOutlet(){
-    var plant = document.getElementById('firstOutletSelect').value;
-    var pw = document.getElementById('firstOutletPassword');
-    var st = document.getElementById('firstOutletStatus');
-    if(!pw.value || pw.value.trim() !== OUTLET_PASSWORDS[plant]){
-      st.innerHTML = '<div class="status err">' + (pw.value ? 'Wrong password for ' : 'Enter the password for ') + escapeHtml(outletLabel(plant)) + '.</div>';
-      pw.value = ''; pw.focus();
-      return;
-    }
-    try { localStorage.setItem(OUTLET_STORAGE_KEY, plant); } catch(e){ /* still applies for this page load */ }
-    currentOutletPlant = plant;
+  // Head Office and Management see every outlet in Documents and Summary Report.
+  function allOutletsScope(){ return !!currentUser && currentUser.category !== 'Outlet'; }
+  function plantQ(q, plant){ return plant ? q.eq('plant', plant) : q; }
+
+  function rpcCall(name, args){
+    return sb.rpc(name, args).then(function(res){
+      if(res.error) throw new Error(res.error.message);
+      return res.data;
+    });
+  }
+  function readSession(){ try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch(e){ return null; } }
+  function writeSession(token){ try { localStorage.setItem(SESSION_KEY, JSON.stringify({ token: token, lastActive: lastActive })); } catch(e){} }
+  function clearSession(){ try { localStorage.removeItem(SESSION_KEY); } catch(e){} }
+
+  function showLogin(msg){
+    document.getElementById('firstOutletOverlay').style.display = 'flex';
+    var n = document.getElementById('loginNotice');
+    if(msg){ n.textContent = msg; n.style.color = '#b45309'; } else { n.textContent = 'Enter your Login ID and password.'; n.style.color = ''; }
+    document.getElementById('loginIdInput').focus();
+  }
+
+  function doLogin(){
+    var id = document.getElementById('loginIdInput').value.trim();
+    var pw = document.getElementById('loginPwInput').value.trim();
+    var st = document.getElementById('loginStatus'), btn = document.getElementById('loginBtn');
+    if(!id || !pw){ st.innerHTML = '<div class="status err">Enter your Login ID and password.</div>'; return; }
+    btn.disabled = true;
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Checking...</div>';
+    rpcCall('drs_login', { p_login: id, p_password: pw }).then(function(d){
+      if(!d){ st.innerHTML = '<div class="status err">Incorrect Login ID or password.</div>'; document.getElementById('loginPwInput').value = ''; return; }
+      document.getElementById('loginPwInput').value = '';
+      document.getElementById('loginIdInput').value = '';
+      st.innerHTML = '';
+      lastActive = Date.now();
+      writeSession(d.token);
+      enterApp(d);
+    }).catch(function(err){
+      st.innerHTML = '<div class="status err">Could not log in: ' + escapeHtml(err.message) + '</div>';
+    }).then(function(){ btn.disabled = false; });
+  }
+
+  function enterApp(d){
+    currentUser = { id: d.id, loginId: d.login_id, category: d.category, plant: d.plant, token: d.token };
+    if(d.category === 'Outlet' && d.plant) currentOutletPlant = d.plant;          // fixed by the account
+    else if(d.category === 'Management') currentOutletPlant = getCurrentOutlet();  // Management picks in Store Assignment
+    else currentOutletPlant = DEFAULT_OUTLET_PLANT;
     outletPending = false;
-    pw.value = '';
     document.getElementById('firstOutletOverlay').style.display = 'none';
+    applyAccess();
     applyOutletBranding();
+    startIdleWatch();
     startApp();
   }
+
+  function applyAccess(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-access]'), function(el){
+      el.classList.toggle('acc-hide', !can(el.getAttribute('data-access')));
+    });
+    [['docsOutlet', 'docsOutletWrap'], ['sumOutlet', 'sumOutletWrap']].forEach(function(p){
+      var sel = document.getElementById(p[0]), wrap = document.getElementById(p[1]);
+      if(!sel || !wrap) return;
+      if(allOutletsScope()){
+        sel.innerHTML = '<option value="">All outlets</option>' + OUTLET_OPTIONS.map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
+        wrap.style.display = 'block';
+      } else wrap.style.display = 'none';
+    });
+  }
+
+  function markActive(){
+    if(!currentUser) return;
+    var now = Date.now();
+    lastActive = now;
+    if(now - lastPersist > 10000){ lastPersist = now; writeSession(currentUser.token); }
+  }
+  function startIdleWatch(){
+    ['click', 'keydown', 'touchstart', 'mousemove', 'scroll'].forEach(function(ev){ window.addEventListener(ev, markActive, { passive: true, capture: true }); });
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) idleCheck(); });
+    if(idleTimer) clearInterval(idleTimer);
+    idleTimer = setInterval(idleCheck, 15000);
+  }
+  function idleCheck(){
+    if(!currentUser) return;
+    var now = Date.now();
+    var s = readSession();
+    var last = Math.max(lastActive, (s && s.lastActive) || 0);   // another tab may have been active
+    if(now - last > IDLE_MS){ expireSession(); return; }
+    if(lastActive > lastPing && now - lastPing > 5 * 60 * 1000){   // keep the server session alive while active
+      lastPing = now;
+      rpcCall('drs_session', { p_token: currentUser.token }).then(function(d){ if(!d) expireSession(); }).catch(function(){});
+    }
+  }
+  function expireSession(){
+    try { sessionStorage.setItem('drs_notice', 'You were logged out after 30 minutes of inactivity. Please log in again.'); } catch(e){}
+    endSession();
+  }
+  function logoutNow(){ endSession(); }
+  function endSession(){
+    var tok = currentUser && currentUser.token;
+    currentUser = null; clearSession();
+    var went = false;
+    var go = function(){ if(!went){ went = true; location.reload(); } };
+    if(tok) rpcCall('drs_logout', { p_token: tok }).then(go, go); else go();
+    setTimeout(go, 1500);
+  }
+
   window.addEventListener('DOMContentLoaded', function(){
     applySidebarPreference();
-    if(!hasStoredOutlet()){
-      outletPending = true;
-      var sel = document.getElementById('firstOutletSelect');
-      sel.innerHTML = '<option value="">- Select outlet -</option>' + OUTLET_OPTIONS.map(function(o){
-        return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>';
-      }).join('');
-      document.getElementById('firstOutletOverlay').style.display = 'flex';
+    var notice = null;
+    try { notice = sessionStorage.getItem('drs_notice'); sessionStorage.removeItem('drs_notice'); } catch(e){}
+    var s = readSession();
+    if(s && s.token && Date.now() - (s.lastActive || 0) < IDLE_MS){
+      lastActive = Date.now();
+      rpcCall('drs_session', { p_token: s.token }).then(function(d){
+        if(d){ writeSession(d.token); enterApp(d); }
+        else { clearSession(); showLogin(notice); }
+      }).catch(function(){ showLogin('Could not reach the server. Check the connection, then log in.'); });
       return;
     }
-    startApp();
+    if(s) clearSession();
+    showLogin(notice || (s ? 'You were logged out after 30 minutes of inactivity. Please log in again.' : null));
   });
   var splashStart = 0;
   function showSplash(){
     var el = document.getElementById('loadingView');
     var o = document.getElementById('welcomeOutlet');
-    if(o) o.textContent = outletLabel(currentOutletPlant);
+    if(o) o.textContent = currentUser ? currentUser.loginId : outletLabel(currentOutletPlant);
     if(el){ el.classList.remove('fade-out'); el.style.display = 'flex'; }
     splashStart = Date.now();
   }
@@ -810,10 +924,11 @@
   // anything printed from it) always identifies the right store.
   function applyOutletBranding(){
     var label = outletLabel(currentOutletPlant);
+    var cat = currentUser ? currentUser.category : 'Outlet';
     var pill = document.getElementById('outletPillText');
-    if(pill) pill.textContent = label;
+    if(pill) pill.textContent = cat === 'Head Office' ? 'HEAD OFFICE' : (cat === 'Management' ? 'MANAGEMENT \u00b7 ' + label : 'OUTLET: ' + label);
     var um = document.getElementById('userMenuOutlet');
-    if(um) um.textContent = 'Outlet: ' + label;
+    if(um) um.textContent = currentUser ? currentUser.loginId + ' (' + cat + ')' : 'Account';
   }
 
   // Reflects the current category list in the header subtitle, so it
@@ -884,6 +999,8 @@
   var lastRecordsType = 'it';
 
   function showTab(tab){
+    var need = TAB_ACCESS[tab];
+    if(need && !can(need)){ if(tab !== 'home') showTab('home'); return; }
     if(tab !== currentTab && editingBlocked()) return;
     closeMobileNav();
     currentTab = tab;
@@ -920,13 +1037,16 @@
     }
     if(tab === 'rv') revLoad();
     if(tab === 'sum') sumInit();
+    if((tab === 'admin' || tab === 'store') && currentUser && currentUser.category === 'Management' && !adminUnlocked) adminAutoUnlock();
     if(tab === 'admin' || tab === 'master' || tab === 'store'){ adminSwitchPane(tab); populateAdminOutletDropdown(); populateAdminCategoryDropdown(); }
     if(tab === 'master') loadRecentMasterActivity();
     if(tab === 'docs') docsLoadRecent();
     if(tab === 'home'){
       refreshHomeDashboard();
-      loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
-      gdLoadPending({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+      if(can('records')){
+        loadPendingEntries({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+        gdLoadPending({silent:true, force:true}).then(refreshHomeDashboard).catch(function(){});
+      }
     }
     window.scrollTo(0, 0);
     updateSyncUi();
@@ -3076,7 +3196,7 @@
 
     // Reflects whichever outlet is currently active on this device, so a
     // report printed at 1015-SHPL correctly reads "SHPL", not "SHBN".
-    var outletName = outletShortName(currentOutletPlant);
+    var outletName = outletShortName(p.plant || currentOutletPlant);
 
     // New-format reports (entered with a Checked By name) sign as Supervisor Fresh Market /
     // Checked By / Verified By (blank). Older records keep the Staff / Supervisor layout.
@@ -3165,24 +3285,14 @@
   // Checked client-side rather than via Apps Script — this was the last
   // thing still depending on that legacy backend, and this gate is a
   // simple deterrent, not real security, either way.
-  var ADMIN_PASSWORD = '8888';
-  var OUTLET_PASSWORDS = { '1008': '1144SHBN', '1015': '2255SHPL', '1007': '3366SHPP' };
-
-  function unlockAdmin(){
-    var pw = document.getElementById('adminPasswordInput').value;
-    var statusEl = document.getElementById('adminLockStatus');
-
-    if(pw === ADMIN_PASSWORD){
-      adminUnlocked = true;
-      document.getElementById('adminLockView').style.display = 'none';
-      document.getElementById('adminUnlockedView').style.display = 'block';
-      populateAdminOutletDropdown();
-      populateAdminCategoryDropdown();
-      loadAdminPendingList();
-      gdAdminInit();
-    } else {
-      statusEl.innerHTML = '<div class="status err">Incorrect password.</div>';
-    }
+  // Admin is only reachable by a Management account (see can('admin')), so there is no separate admin password.
+  function adminAutoUnlock(){
+    adminUnlocked = true;
+    document.getElementById('adminLockView').style.display = 'none';
+    document.getElementById('adminUnlockedView').style.display = 'block';
+    populateAdminOutletDropdown();
+    populateAdminCategoryDropdown();
+    gdAdminInit();
   }
 
   function populateAdminOutletDropdown(){
@@ -3205,13 +3315,6 @@
       return;
     }
 
-    var pwEl = document.getElementById('outletPasswordInput');
-    if(!pwEl.value || pwEl.value.trim() !== OUTLET_PASSWORDS[selected]){
-      statusEl.innerHTML = '<div class="status err">' + (pwEl.value ? 'Wrong password for ' : 'Enter the password for ') + escapeHtml(outletLabel(selected)) + '.</div>';
-      pwEl.value = '';
-      pwEl.focus();
-      return;
-    }
     statusEl.innerHTML = '';
 
     if(gdCart.length){
@@ -3239,7 +3342,7 @@
         '<div class="pending-meta">This device will show and save data for the new outlet in New Entry, IT Entry, Completed and Problem PLUs. ' +
         'Anything submitted afterwards is recorded under <b>' + escapeHtml(outletLabel(selected)) + '</b>. The Masterlist stays shared.</div>',
       confirmLabel: 'Yes, switch outlet',
-      onConfirm: function(){ document.getElementById('outletPasswordInput').value = ''; applyOutletChange(selected); },
+      onConfirm: function(){ applyOutletChange(selected); },
       onCancel: function(){ document.getElementById('adminOutletSelect').value = currentOutletPlant; }
     });
   }
@@ -5090,7 +5193,7 @@
       return '<tr><td class="no">' + (idx + 1) + '</td><td>' + escapeHtml(it.material) + '</td><td>' + escapeHtml(it.ean) + '</td><td>' + escapeHtml(it.description) + '</td>' +
         '<td>' + escapeHtml(String(it.qty)) + '</td><td>' + escapeHtml(it.salesUnit) + '</td><td>' + escapeHtml(it.reason) + '</td></tr>';
     }).join('');
-    var outletName = outletShortName(currentOutletPlant);
+    var outletName = outletShortName(p.plant || currentOutletPlant);
     var html =
       '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' Goods Disposal</title><style>' +
       'body{font-family:Georgia,"Times New Roman",serif;color:#222;margin:32px;}' +
@@ -5353,13 +5456,15 @@
   // =====================================================================
   // ================= DOCUMENTS (both disposal types) ===================
   // =====================================================================
-  var docsReg = [];   // every document card currently on screen, so a click can open it
+  var docsReg = [];
+  function docsPlant(){ var el = document.getElementById('docsOutlet'); return allOutletsScope() ? (el ? el.value : '') : currentOutletPlant; }
+  function docsScopeChanged(){ docsClear(); docsLoadRecent(); }   // every document card currently on screen, so a click can open it
 
   function docsGroup(rows, type){
     var by = {}, order = [];
     rows.slice().sort(function(x, y){ return Number(x.id) - Number(y.id); }).forEach(function(r){
       if(!by[r.batch_id]){
-        by[r.batch_id] = { type: type, batchId: r.batch_id, category: r.category, staff: r.staff, supervisor: r.supervisor,
+        by[r.batch_id] = { type: type, plant: r.plant, batchId: r.batch_id, category: r.category, staff: r.staff, supervisor: r.supervisor,
           checkedBy: r.checked_by || '', refNo: r.ref_no || '', status: r.status, entryDate: r.entry_date,
           dateDisplay: formatDateDisplay(r.entry_date), doc: r.material_document, keyInBy: r.key_in_by,
           keyInDate: r.key_in_date, items: 0, qty: 0, rows: [] };
@@ -5376,7 +5481,7 @@
       var idx = docsReg.push(b) - 1;
       return '<div class="card doc-card" style="margin-bottom:12px;" tabindex="0" onclick="docsOpen(' + idx + ')" onkeydown="if(event.key===\'Enter\')docsOpen(' + idx + ')">' +
         '<div class="pending-card-header"><div><span class="type-tag ' + (b.type === 'fm' ? 'fm' : 'gd') + '">' + (b.type === 'fm' ? 'Fresh Market' : 'Goods') + '</span>' +
-        '<span class="cat-tag">' + escapeHtml(b.category || '-') + '</span>' + refTag(b) +
+        '<span class="cat-tag">' + escapeHtml(b.category || '-') + '</span>' + (allOutletsScope() ? '<span class="cat-tag">' + escapeHtml(outletLabel(b.plant)) + '</span>' : '') + refTag(b) +
         '<span class="st-chip ' + escapeHtml(b.status) + '">' + docsStatusLabel(b.status) + '</span></div>' +
         '<div class="pending-meta">' + escapeHtml(b.dateDisplay) + '</div></div>' +
         '<div class="pending-meta" style="margin-top:6px;"><b>' + escapeHtml(b.staff) + '</b> &middot; ' + escapeHtml(b.supervisor) + ' &middot; ' + b.items + ' item' + (b.items === 1 ? '' : 's') + '</div>' +
@@ -5404,7 +5509,7 @@
         '<div class="pending-card-header"><div><span class="type-tag ' + (fm ? 'fm' : 'gd') + '">' + (fm ? 'Fresh Market' : 'Goods') + '</span>' +
         '<span class="st-chip ' + escapeHtml(b.status) + '">' + docsStatusLabel(b.status) + '</span></div></div>' +
         '<div class="docs-kv">' +
-          kv('Reference Number', b.refNo) + kv('Date', b.dateDisplay) + kv('Bad Stock Category', b.category) +
+          kv('Outlet', outletLabel(b.plant)) + kv('Reference Number', b.refNo) + kv('Date', b.dateDisplay) + kv('Bad Stock Category', b.category) +
           kv('Staff', b.staff) + kv('Supervisor', b.supervisor) + (fm ? kv('Checked By', b.checkedBy) : '') +
           kv('Material Document', b.doc) + kv('Key In By', b.keyInBy) + kv('Key In Date', b.keyInDate ? formatDateDisplay(b.keyInDate) : '') +
         '</div>' +
@@ -5422,7 +5527,7 @@
   function docsPrint(i){
     var b = docsReg[i]; if(!b) return;
     var done = b.status === 'keyed_in';
-    var common = { date: b.dateDisplay, category: b.category, staff: b.staff, supervisor: b.supervisor, refNo: b.refNo,
+    var common = { plant: b.plant, date: b.dateDisplay, category: b.category, staff: b.staff, supervisor: b.supervisor, refNo: b.refNo,
       materialDocument: done ? (b.doc || '') : '', keyInBy: done ? (b.keyInBy || '') : '' };
     if(b.type === 'fm'){
       openPrintView(Object.assign(common, { time: '', checkedBy: b.checkedBy,
@@ -5461,19 +5566,19 @@
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
     var states = ['pending', 'keyed_in', 'reverted'];
     Promise.all([
-      docsQuery(function(t){ return t.eq('material_document', q).eq('plant', currentOutletPlant).in('status', states); }),
-      docsQuery(function(t){ return t.eq('ref_no', q).eq('plant', currentOutletPlant).in('status', states); })
+      docsQuery(function(t){ return plantQ(t.eq('material_document', q), docsPlant()).in('status', states); }),
+      docsQuery(function(t){ return plantQ(t.eq('ref_no', q), docsPlant()).in('status', states); })
     ]).then(function(rs){
       var seen = {}, list = [];
       rs[0].concat(rs[1]).forEach(function(b){ var k = b.type + b.batchId; if(!seen[k]){ seen[k] = 1; list.push(b); } });
       docsReg = [];
-      st.innerHTML = list.length ? '' : gdErrHtml('No record found for "' + q + '" at ' + outletLabel(currentOutletPlant) + '.');
+      st.innerHTML = list.length ? '' : gdErrHtml('No record found for "' + q + '" at ' + (docsPlant() ? outletLabel(docsPlant()) : 'any outlet') + '.');
       out.innerHTML = list.length ? docsCards(list) : '';
     }).catch(function(err){ st.innerHTML = gdErrHtml(err.message); });
   }
   function docsLoadRecent(){
     var el = document.getElementById('docsRecent');
-    docsQuery(function(q){ return q.eq('status', 'keyed_in').eq('plant', currentOutletPlant).order('key_in_date', { ascending: false }).limit(60); })
+    docsQuery(function(q){ return plantQ(q.eq('status', 'keyed_in'), docsPlant()).order('key_in_date', { ascending: false }).limit(60); })
       .then(function(list){ docsReg = []; el.innerHTML = docsCards(list.slice(0, 15)); })
       .catch(function(err){ el.innerHTML = gdErrHtml(err.message); });
   }
@@ -5534,12 +5639,15 @@
   }
 
   // Page through results (Supabase returns at most 1000 rows per request).
+  var sumRunPlant = '';
+  function sumScopeName(){ return sumRunPlant ? outletShortName(sumRunPlant) : 'ALL OUTLETS'; }
   function sumFetchAll(table, cols, fromIso, toIso, cats){
     var PAGE = 1000, out = [];
     function next(offset){
       var q = sb.from(table).select(cols)
-        .eq('status', 'keyed_in').eq('plant', currentOutletPlant)
+        .eq('status', 'keyed_in')
         .gte('entry_date', fromIso).lt('entry_date', toIso);
+      q = plantQ(q, sumRunPlant);
       if(cats.length) q = q.in('category', cats);
       return q.order('id', { ascending: true }).range(offset, offset + PAGE - 1).then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -5557,6 +5665,7 @@
     sumSetActions(false);
     if(!from || !to){ st.innerHTML = '<div class="status err">Choose both a From and a To date.</div>'; return; }
     if(from > to){ st.innerHTML = '<div class="status err">The From date is after the To date.</div>'; return; }
+    var so = document.getElementById('sumOutlet'); sumRunPlant = allOutletsScope() ? (so ? so.value : '') : currentOutletPlant;
     var cats = Object.keys(sumSel);
     var fromIso = new Date(from + 'T00:00:00').toISOString();
     var end = new Date(to + 'T00:00:00'); end.setDate(end.getDate() + 1);
@@ -5636,7 +5745,7 @@
     if(typeof XLSX === 'undefined'){ alert('The Excel library has not loaded yet. Check the internet connection and try again.'); return; }
     var hd = sumHeadLine(r), gd = r.type === 'gd';
     var rows = [
-      [outletShortName(currentOutletPlant) + ' \u2014 ' + hd.title],
+      [sumScopeName() + ' \u2014 ' + hd.title],
       ['Period', hd.range], ['Category', hd.cats], ['Items', r.list.length], ['Completed records', r.records], [],
       gd ? ['No.', 'Material', 'Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
          : ['No.', 'Material', 'PLU / Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
@@ -5654,7 +5763,7 @@
 
   function sumPrint(){
     var r = sumLast; if(!r) return;
-    var hd = sumHeadLine(r), outletName = outletShortName(currentOutletPlant);
+    var hd = sumHeadLine(r), outletName = sumScopeName();
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(outletName) + ' ' + escapeHtml(hd.title) + '</title><style>' +
       'body{font-family:Georgia,"Times New Roman",serif;color:#222;margin:32px;}' +
       '.title{text-align:center;font-size:20px;font-weight:700;margin-bottom:2px;}' +
@@ -5676,7 +5785,7 @@
   }
 
   // ---------- Admin: tile menu (Unpost / Fresh Market / Goods) ----------
-  var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd', 'Deleted'];
+  var ADMIN_BOXES = ['Unpost', 'Fm', 'Gd', 'Deleted', 'Accounts'];
   function adminOpenBox(name){
     ADMIN_BOXES.forEach(function(n){
       var el = document.getElementById('adminBox' + n);
@@ -5684,6 +5793,7 @@
     });
     document.getElementById('adminMenu').style.display = 'none';
     if(name === 'Fm') loadAdminPendingList();
+    if(name === 'Accounts'){ accInitForm(); accLoad(); }
     if(name === 'Gd') gdLoadAdminPending();
     if(name === 'Deleted') delReset();
     window.scrollTo(0, 0);
@@ -5734,6 +5844,81 @@
     }).catch(function(err){
       box.innerHTML = '<div class="status err">Failed to load deleted records: ' + escapeHtml(err.message) + '</div>';
     });
+  }
+
+  // ----- Change own password (every account) -----
+  function pwOpen(){
+    ['pwOld', 'pwNew', 'pwNew2'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('pwStatus').innerHTML = '';
+    document.getElementById('pwOverlay').style.display = 'flex';
+    document.getElementById('pwOld').focus();
+  }
+  function pwClose(){ document.getElementById('pwOverlay').style.display = 'none'; }
+  function pwSave(){
+    var o = document.getElementById('pwOld').value, n = document.getElementById('pwNew').value, n2 = document.getElementById('pwNew2').value;
+    var st = document.getElementById('pwStatus'), btn = document.getElementById('pwSaveBtn');
+    if(!o || !n){ st.innerHTML = '<div class="status err">Fill in the current and new password.</div>'; return; }
+    if(n !== n2){ st.innerHTML = '<div class="status err">The new passwords do not match.</div>'; return; }
+    if(n.length < 6 || /\s/.test(n)){ st.innerHTML = '<div class="status err">The new password needs at least 6 characters and no spaces.</div>'; return; }
+    btn.disabled = true;
+    rpcCall('drs_change_password', { p_token: currentUser.token, p_old: o, p_new: n }).then(function(){
+      st.innerHTML = '<div class="status ok">Password changed. Use it the next time you log in.</div>';
+      setTimeout(pwClose, 1500);
+    }).catch(function(err){ st.innerHTML = '<div class="status err">' + escapeHtml(err.message) + '</div>'; })
+      .then(function(){ btn.disabled = false; });
+  }
+
+  // ----- Accounts (Management only) -----
+  function accInitForm(){
+    var p = document.getElementById('accPlant');
+    if(!p.options.length) p.innerHTML = OUTLET_OPTIONS.map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
+    accCategoryChanged();
+  }
+  function accCategoryChanged(){
+    document.getElementById('accOutletWrap').style.display = document.getElementById('accCategory').value === 'Outlet' ? 'block' : 'none';
+  }
+  function accCreate(){
+    var id = document.getElementById('accLoginId').value.trim();
+    var cat = document.getElementById('accCategory').value;
+    var plant = cat === 'Outlet' ? document.getElementById('accPlant').value : null;
+    var st = document.getElementById('accCreateStatus');
+    if(!id){ st.innerHTML = '<div class="status err">Enter a Login ID.</div>'; return; }
+    st.innerHTML = '<div class="status ok"><span class="spinner"></span> Creating...</div>';
+    rpcCall('drs_account_create', { p_token: currentUser.token, p_login: id, p_category: cat, p_plant: plant }).then(function(a){
+      st.innerHTML = '<div class="status ok">Account created with its default password. Login ID <b>' + escapeHtml(a.login_id) + '</b> &middot; Password <b>' + escapeHtml(a.password) + '</b></div>';
+      document.getElementById('accLoginId').value = '';
+      accLoad();
+    }).catch(function(err){ st.innerHTML = '<div class="status err">' + escapeHtml(err.message) + '</div>'; });
+  }
+  var accRows = [];
+  function accLoad(){
+    var box = document.getElementById('accList');
+    box.innerHTML = '<div class="empty"><span class="spinner"></span> Loading...</div>';
+    rpcCall('drs_account_list', { p_token: currentUser.token }).then(function(list){
+      accRows = list || [];
+      if(!accRows.length){ box.innerHTML = '<div class="empty">No active accounts.</div>'; return; }
+      box.innerHTML = '<div style="overflow-x:auto;"><table class="acc-table"><thead><tr><th>Login ID</th><th>Password</th><th>Category</th><th>Access</th><th></th></tr></thead><tbody>' +
+        accRows.map(function(a, i){
+          var own = currentUser && a.id === currentUser.id;
+          return '<tr><td><b>' + escapeHtml(a.login_id) + '</b></td><td class="pw">' + escapeHtml(a.password) + '</td><td>' + escapeHtml(a.category) + '</td>' +
+            '<td class="acc-access">' + (ACCESS_LABELS[a.category] || []).map(escapeHtml).join('<br>') + '</td>' +
+            '<td style="white-space:nowrap;">' + (own ? '<span class="pending-meta">You</span>' : '<button class="btn ghost" onclick="accReset(' + i + ')">Reset password</button> <button class="btn danger" onclick="accDeactivate(' + i + ')">Deactivate</button>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }).catch(function(err){ box.innerHTML = '<div class="status err">' + escapeHtml(err.message) + '</div>'; });
+  }
+  function accReset(i){
+    var a = accRows[i]; if(!a) return;
+    if(!confirm('Reset the password of ' + a.login_id + ' to its default (outlet name + 1234)?\n\nThey are signed out and must log in with the default password.')) return;
+    rpcCall('drs_account_reset', { p_token: currentUser.token, p_id: a.id }).then(function(d){
+      accLoad();
+      document.getElementById('accCreateStatus').innerHTML = '<div class="status ok">Password reset. Login ID <b>' + escapeHtml(d.login_id) + '</b> &middot; Password <b>' + escapeHtml(d.password) + '</b></div>';
+    }).catch(function(err){ document.getElementById('accList').insertAdjacentHTML('afterbegin', '<div class="status err">' + escapeHtml(err.message) + '</div>'); });
+  }
+  function accDeactivate(i){
+    var a = accRows[i]; if(!a) return;
+    if(!confirm('Deactivate account ' + a.login_id + '?\n\nIt can no longer log in and is signed out straight away.')) return;
+    rpcCall('drs_account_deactivate', { p_token: currentUser.token, p_id: a.id }).then(accLoad)
+      .catch(function(err){ document.getElementById('accList').insertAdjacentHTML('afterbegin', '<div class="status err">' + escapeHtml(err.message) + '</div>'); });
   }
 
   function adminSwitchPane(name){

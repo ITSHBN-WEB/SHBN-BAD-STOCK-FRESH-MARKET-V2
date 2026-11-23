@@ -502,3 +502,15 @@
 
 .docs-search-actions{display:flex;gap:10px;margin-top:10px}
 .docs-search-actions .btn{width:110px;margin-top:0;padding:10px 0;text-align:center}
+
+.acc-hide{display:none!important}
+.acc-table{width:100%;border-collapse:collapse;font-size:13px}
+.acc-table th,.acc-table td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.acc-table th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.acc-table td.pw{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700}
+.acc-table .acc-access{font-size:12px;color:var(--muted);line-height:1.5}
+.acc-table .btn{width:auto;margin:0;padding:6px 14px;font-size:12.5px}
+.sum-outlet-select{max-width:260px}
+
+#pwOverlay{position:fixed;inset:0;z-index:9998;background:rgba(30,20,20,.55);display:none;align-items:center;justify-content:center;padding:16px}
+#pwOverlay .card{width:100%;max-width:400px;margin:0}
