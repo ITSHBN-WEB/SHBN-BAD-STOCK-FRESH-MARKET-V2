@@ -789,8 +789,9 @@
     [['docsOutlet', 'docsOutletWrap'], ['sumOutlet', 'sumOutletWrap']].forEach(function(p){
       var sel = document.getElementById(p[0]), wrap = document.getElementById(p[1]);
       if(!sel || !wrap) return;
+      var isSum = p[0] === 'sumOutlet';
       if(allOutletsScope()){
-        sel.innerHTML = '<option value="">All outlets</option>' + OUTLET_OPTIONS.filter(function(o){ return o.plant !== MGMT_PLANT || currentUser.category === 'Management'; }).map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
+        sel.innerHTML = '<option value="">All outlets</option>' + OUTLET_OPTIONS.filter(function(o){ return o.plant !== MGMT_PLANT || (!isSum && currentUser.category === 'Management'); }).map(function(o){ return '<option value="' + o.plant + '">' + escapeHtml(o.label) + '</option>'; }).join('');
         wrap.style.display = 'block';
       } else wrap.style.display = 'none';
     });
@@ -5523,7 +5524,7 @@
   // =====================================================================
   var docsReg = [];
   function docsPlant(){ var el = document.getElementById('docsOutlet'); return allOutletsScope() ? (el ? el.value : '') : currentOutletPlant; }
-  function docsScopeChanged(){ docsClear(); docsLoadRecent(); }   // every document card currently on screen, so a click can open it
+  function docsScopeChanged(){ docsClear(); }   // every document card currently on screen, so a click can open it
 
   function docsGroup(rows, type){
     var by = {}, order = [];
@@ -5619,6 +5620,8 @@
     document.getElementById('docsSearchInput').value = '';
     document.getElementById('docsSearchStatus').innerHTML = '';
     document.getElementById('docsSearchResult').innerHTML = '';
+    document.getElementById('docsRecentCard').style.display = '';
+    docsLoadRecent();
     document.getElementById('docsSearchInput').focus();
   }
   function docsSearch(){
@@ -5629,6 +5632,7 @@
     if(!raw){ st.innerHTML = gdErrHtml('Enter a material document or reference number.'); return; }
     var q = /^[\d\s-]+$/.test(raw) ? raw.replace(/[\s-]/g, '') : raw;   // "1008-1126-01-001" works too
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Searching...</div>';
+    document.getElementById('docsRecentCard').style.display = 'none';   // a searched document is all that is shown
     var states = ['pending', 'keyed_in', 'reverted'];
     Promise.all([
       docsQuery(function(t){ return plantQ(t.ilike('material_document', '%' + q + '%'), docsPlant()).in('status', states); }).then(function(l){ return l.filter(function(b){ return docHasToken(b.doc, q); }); }),
@@ -5712,7 +5716,7 @@
       var q = sb.from(table).select(cols)
         .eq('status', 'keyed_in')
         .gte('entry_date', fromIso).lt('entry_date', toIso);
-      q = plantQ(q, sumRunPlant);
+      q = sumRunPlant ? q.eq('plant', sumRunPlant) : q.neq('plant', MGMT_PLANT);   // Management test records are never in a summary
       if(cats.length) q = q.in('category', cats);
       return q.order('id', { ascending: true }).range(offset, offset + PAGE - 1).then(function(res){
         if(res.error) throw new Error(res.error.message);
@@ -5731,6 +5735,7 @@
     if(!from || !to){ st.innerHTML = '<div class="status err">Choose both a From and a To date.</div>'; return; }
     if(from > to){ st.innerHTML = '<div class="status err">The From date is after the To date.</div>'; return; }
     var so = document.getElementById('sumOutlet'); sumRunPlant = allOutletsScope() ? (so ? so.value : '') : currentOutletPlant;
+    if(sumRunPlant === MGMT_PLANT) sumRunPlant = '';
     var cats = Object.keys(sumSel);
     var fromIso = new Date(from + 'T00:00:00').toISOString();
     var end = new Date(to + 'T00:00:00'); end.setDate(end.getDate() + 1);
@@ -5740,31 +5745,44 @@
     st.innerHTML = '<div class="status ok"><span class="spinner"></span> Building report...</div>';
 
     var table = type === 'fm' ? 'bad_stock_fresh_market' : 'bad_stock_goods';
-    var cols = type === 'fm' ? 'plu_code,material,description,uom,quantity,category,batch_id' : 'material,ean,description,sales_unit,quantity,category,batch_id';
+    var cols = type === 'fm' ? 'plu_code,material,description,uom,quantity,category,batch_id,plant' : 'material,ean,description,sales_unit,quantity,category,batch_id,plant';
     sumFetchAll(table, cols, fromIso, toIso, cats).then(function(rows){
-      var by = {}, order = [], batches = {};
-      rows.forEach(function(r){
-        var key = type === 'fm' ? [r.plu_code, r.uom].join('|') : [r.material, r.ean, r.sales_unit].join('|');
-        var g = by[key];
-        if(!g){
-          g = by[key] = type === 'fm'
-            ? { code: r.plu_code, mat: r.material, desc: r.description, unit: r.uom, qty: 0, txns: {} }
-            : { code: r.material, code2: r.ean, desc: r.description, unit: r.sales_unit, qty: 0, txns: {} };
-          order.push(key);
-        }
-        g.qty += Number(r.quantity) || 0;
-        g.txns[r.batch_id] = true;
-        batches[r.batch_id] = true;
-      });
-      var list = order.map(function(k){ var g = by[k]; g.qty = Math.round(g.qty * 100) / 100; g.n = Object.keys(g.txns).length; return g; });
-      list.sort(function(a, b){ return b.qty - a.qty || String(a.desc).localeCompare(String(b.desc)); });
-      sumLast = { type: type, from: from, to: to, cats: cats, list: list, records: Object.keys(batches).length };
+      var all = sumAggregate(rows, type);
+      var byPlant = null;
+      if(!sumRunPlant){   // all outlets: also keep one summary per outlet, for the Excel sheets
+        byPlant = OUTLET_OPTIONS.filter(function(o){ return o.plant !== MGMT_PLANT; }).map(function(o){
+          var a2 = sumAggregate(rows.filter(function(x){ return x.plant === o.plant; }), type);
+          return { plant: o.plant, label: o.label, list: a2.list, records: a2.records };
+        });
+      }
+      var list = all.list;
+      sumLast = { type: type, from: from, to: to, cats: cats, list: list, records: all.records, byPlant: byPlant };
       st.innerHTML = '';
       sumRenderResult();
       sumSetActions(list.length > 0);
     }).catch(function(err){
       st.innerHTML = '<div class="status err">Error: ' + escapeHtml(err.message) + '</div>';
     }).then(function(){ btn.disabled = false; });
+  }
+
+  function sumAggregate(rows, type){
+    var by = {}, order = [], batches = {};
+    rows.forEach(function(r){
+      var key = type === 'fm' ? [r.plu_code, r.uom].join('|') : [r.material, r.ean, r.sales_unit].join('|');
+      var g = by[key];
+      if(!g){
+        g = by[key] = type === 'fm'
+          ? { code: r.plu_code, mat: r.material, desc: r.description, unit: r.uom, qty: 0, txns: {} }
+          : { code: r.material, code2: r.ean, desc: r.description, unit: r.sales_unit, qty: 0, txns: {} };
+        order.push(key);
+      }
+      g.qty += Number(r.quantity) || 0;
+      g.txns[r.batch_id] = true;
+      batches[r.batch_id] = true;
+    });
+    var list = order.map(function(k){ var g = by[k]; g.qty = Math.round(g.qty * 100) / 100; g.n = Object.keys(g.txns).length; return g; });
+    list.sort(function(a, b){ return b.qty - a.qty || String(a.desc).localeCompare(String(b.desc)); });
+    return { list: list, records: Object.keys(batches).length };
   }
 
   function sumHeadLine(r){
@@ -5805,24 +5823,37 @@
     document.getElementById('sumExportBtn').disabled = !on;
   }
 
+  function sumSheetRows(r, hd, scope, list, records){
+    var gd = r.type === 'gd';
+    var rows = [
+      [scope + ' \u2014 ' + hd.title],
+      ['Period', hd.range], ['Category', hd.cats], ['Items', list.length], ['Completed records', records], [],
+      gd ? ['No.', 'Material', 'Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
+         : ['No.', 'Material', 'PLU / Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
+    ];
+    if(!list.length) rows.push(['', 'No completed records for this selection.']);
+    list.forEach(function(g, i){
+      rows.push(gd ? [i + 1, g.code, g.code2 || '', g.desc || '', g.unit || '', g.qty, g.n]
+                   : [i + 1, g.mat || '', g.code, g.desc || '', g.unit || '', g.qty, g.n]);
+    });
+    return rows;
+  }
   function sumExport(){
     var r = sumLast; if(!r || !r.list.length) return;
     if(typeof XLSX === 'undefined'){ alert('The Excel library has not loaded yet. Check the internet connection and try again.'); return; }
     var hd = sumHeadLine(r), gd = r.type === 'gd';
-    var rows = [
-      [sumScopeName() + ' \u2014 ' + hd.title],
-      ['Period', hd.range], ['Category', hd.cats], ['Items', r.list.length], ['Completed records', r.records], [],
-      gd ? ['No.', 'Material', 'Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
-         : ['No.', 'Material', 'PLU / Product Code', 'Description', 'UOM', 'Total Qty', 'Records']
-    ];
-    r.list.forEach(function(g, i){
-      rows.push(gd ? [i + 1, g.code, g.code2 || '', g.desc || '', g.unit || '', g.qty, g.n]
-                   : [i + 1, g.mat || '', g.code, g.desc || '', g.unit || '', g.qty, g.n]);
-    });
-    var ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 20 }, { wch: 38 }, { wch: 8 }, { wch: 11 }, { wch: 9 }];
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+    function addSheet(name, rows){
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 20 }, { wch: 38 }, { wch: 8 }, { wch: 11 }, { wch: 9 }];
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    }
+    if(r.byPlant){   // All outlets: a Summary sheet for everything, then one sheet per outlet
+      addSheet('Summary', sumSheetRows(r, hd, 'ALL OUTLETS', r.list, r.records));
+      r.byPlant.forEach(function(p){ addSheet(p.label.substring(0, 31), sumSheetRows(r, hd, p.label, p.list, p.records)); });
+    } else {
+      addSheet('Summary', sumSheetRows(r, hd, sumScopeName(), r.list, r.records));
+    }
     XLSX.writeFile(wb, 'DRS-' + (gd ? 'Goods' : 'FreshMarket') + '-Summary-' + r.from + '_to_' + r.to + '.xlsx');
   }
 
